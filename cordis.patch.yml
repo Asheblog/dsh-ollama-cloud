@@ -1,0 +1,23 @@
+# dsh-ollama-cloud bundle patch: mount the Ollama Cloud route as one loader row.
+#
+# Every config field is optional. The row registers the `ollama-cloud` provider
+# route with the curated cloud model catalog — each model carrying the thinking
+# levels its own wire metadata reports — resolves the credential through the
+# harness credentials seam (`OLLAMA_API_KEY` by default) per request, and reads
+# the native `/api` surface for model discovery. Installing this bundle is the
+# whole setup: pick a model, then adjust its reasoning effort from the composer.
+#
+# The row is addressed by id in later layers, so a profile cordis.patch.yml can
+# override any field without touching this package:
+#
+#   - id: llm-ollama-cloud
+#     config:
+#       baseURL: http://localhost:11434/api
+#       apiKeyEnv: ''
+- insert:
+    - id: llm-ollama-cloud
+      name: 'dsh-ollama-cloud'
+      config:
+        retryPolicy:
+          mode: normal
+          maxRetries: 5

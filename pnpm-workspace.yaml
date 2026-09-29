@@ -1,0 +1,31 @@
+# pnpm settings for this single-package repository.
+packages:
+  - '.'
+
+# The @deepseek-ai host packages are published continuously on a nightly
+# cadence; without these exemptions the release-age gate refuses to install
+# the exact versions this plugin compiles against (0.2.0-rc.1).
+minimumReleaseAgeExclude:
+  - '@deepseek-ai/dsh-attachment@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-authorization@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-brand@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-credentials@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-fs@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-invariants@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-launch-environment@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-llm@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-sandbox@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-scope@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-session@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-timeout@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-typert-protocol@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-util-crypto@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-util-values@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-web@0.2.0-rc.1'
+
+# Skipped on purpose: pi-ai carries optional Google/protobuf provider
+# dependencies whose postinstall builds this plugin never uses.
+allowBuilds:
+  '@google/genai': false
+  protobufjs: false

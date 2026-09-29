@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck, test, build
+        run: pnpm run check
+      # The repository tracks lib/ so a GitHub-source install needs no build
+      # step; a stale artifact would ship code nobody reviewed.
+      - name: Committed artifacts match the sources
+        run: git diff --exit-code -- lib
+      - name: Pack and verify the artifact
+        run: |
+          pnpm pack
+          node scripts/check-tarball.mjs
