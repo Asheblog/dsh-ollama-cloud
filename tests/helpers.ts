@@ -38,6 +38,7 @@ export interface CapturedRegistrations {
   directory: unknown[]
   discovery: Array<{ settingsNs: string; discover: unknown }>
   web: { search: string[]; fetch: string[] }
+  rpc: Array<{ channel: string; handler: unknown }>
 }
 
 /** Minimal credential service shape the resolver reads. */
@@ -60,12 +61,14 @@ export function fakeContext(options: {
   launchEnvironment?: FakeLaunchEnvironment
   entryId?: string | undefined
   includeWeb?: boolean
+  includeConnection?: boolean
 } = {}) {
   const captured: CapturedRegistrations = {
     adapters: [],
     directory: [],
     discovery: [],
     web: { search: [], fetch: [] },
+    rpc: [],
   }
   const effect = (callback: () => unknown) => {
     const disposer = callback()
@@ -84,6 +87,17 @@ export function fakeContext(options: {
     },
     effect,
   }
+  const connectionChild = {
+    connection: {
+      rpc: {
+        handle: (channel: string, handler: unknown) => {
+          captured.rpc.push({ channel, handler })
+          return () => Promise.resolve()
+        },
+      },
+    },
+    effect,
+  }
   const ctx = {
     logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
     fiber: { entry: options.entryId === undefined ? undefined : { options: { id: options.entryId } } },
@@ -95,6 +109,7 @@ export function fakeContext(options: {
     effect,
     inject: (names: string[], callback: (child: unknown) => void) => {
       if (options.includeWeb !== false && names.includes('web')) callback(webChild)
+      if (options.includeConnection !== false && names.includes('connection')) callback(connectionChild)
     },
     llm: {
       registerAdapter: (providers: string[], adapter: unknown) => {

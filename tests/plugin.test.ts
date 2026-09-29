@@ -58,6 +58,39 @@ describe('plugin contract', () => {
   })
 })
 
+describe('usage RPC registration', () => {
+  it('registers the usage channel the browser card calls', async () => {
+    const calls: string[] = []
+    vi.stubGlobal('fetch', (async (url: string) => {
+      calls.push(String(url))
+      return new Response(JSON.stringify({ limits: { monthly: { usage: 0.5 } } }), { status: 200 })
+    }) as unknown as typeof fetch)
+
+    const { ctx, captured } = fakeContext({ credentials: { resolve: async () => ({ value: 'k' }) } })
+    apply(ctx, liveConfig().config)
+
+    expect(captured.rpc).toHaveLength(1)
+    expect(captured.rpc[0]?.channel).toBe('/ollama-cloud')
+    const handler = captured.rpc[0]?.handler as (
+      endpoint: string,
+      payload: unknown,
+    ) => Promise<unknown>
+    await expect(handler('usage/read', {})).resolves.toMatchObject({ ok: true, value: { status: 'ok' } })
+    expect(calls[0]).toBe('https://ollama.com/api/usage')
+    await expect(handler('credential/status', {})).resolves.toMatchObject({
+      ok: true,
+      value: { reference: 'OLLAMA_API_KEY', configured: true },
+    })
+    vi.unstubAllGlobals()
+  })
+
+  it('skips the channel in a composition without a browser session', () => {
+    const { ctx, captured } = fakeContext({ includeConnection: false })
+    apply(ctx, liveConfig().config)
+    expect(captured.rpc).toEqual([])
+  })
+})
+
 describe('registered adapter behavior', () => {
   function mountedAdapter() {
     const { ctx, captured } = fakeContext({})

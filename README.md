@@ -67,6 +67,30 @@ Ollama retires cloud models (a retired id answers HTTP 410). The shipped catalog
 - **Discover from the endpoint**: any surface calling `llm/discoverModels` lists what the endpoint currently serves, with context windows and input modalities. Only models `/api/show` can fully describe become candidates.
 - **Edit by hand**: override `models` in the plugin configuration (below). `enabled: false` hides a shipped model.
 
+### Cloud usage in the UI
+
+The plugin ships a browser half that renders in the host's own surfaces — no
+separate page, and no provider-UI shell plugin needed:
+
+- **Models page card**: inside the Ollama Cloud row (`Settings → Models`), one
+  meter per billing window with its remaining share and reset line, the primary
+  window's per-model request counts, the write-only **API key** field, and a
+  refresh button.
+- **Sidebar row**: a compact remaining-quota line under the session list; click
+  it for the per-window detail. It refreshes when the sidebar mounts and every
+  15 minutes after that.
+
+The card reads usage through this plugin's own host channel (`/ollama-cloud`),
+so the API key stays on the host and never reaches the browser. A local or
+self-hosted endpoint answers 404 on `/usage`; that renders as "this endpoint
+does not report cloud usage" rather than an error, and the last good snapshot
+keeps showing instead of disappearing.
+
+> The usage channel needs the composition's `connection` row to inject
+> `webServer`; this bundle's patch adds that (profiles without a connection row
+> skip it). After installing or updating the plugin, restart the harness once —
+> until then the card says so itself.
+
 ## Configuration
 
 Every field is editable from the plugin settings page and overridable per row in the profile's `cordis.patch.yml`:
@@ -134,6 +158,7 @@ Both share the route's credential reference and `baseURL`. Requests carry the cr
 - Verified against DSH `0.2.0-rc.1` (peers are `>=0.2.0-rc.1` with no upper bound; a future regression is recorded in `dsh.compatibility.blocklist`).
 - Runtime dependency: `@earendil-works/pi-ai` (the same library the harness's own `dsh-llm-pi-ai` uses).
 - Protocol translation, streaming, replay, and tool calls are delegated wholesale to the official `@deepseek-ai/dsh-llm-pi-ai` `PiAiAdapter`; this plugin contributes Ollama-specific connection facts, the model catalog, and level metadata. Rationale: [ADR 0001](docs/adr/0001-delegate-chat-to-official-pi-ai-adapter.md).
+- The browser half renders only in host slots (`settings.models.provider-card`, `sidebar.footer.action`) with host theme tokens; it requires no other client package. Its RPC channel (`/ollama-cloud` + `usage/read`) matches what the ecosystem's Ollama provider UIs already call, so one of those reads this plugin's usage too.
 - Known limits: Ollama's OpenAI-compatible surface supports neither `tool_choice` nor `logprobs`, and reports no prompt-cache statistics; usage is whatever it actually returns.
 
 ## Development

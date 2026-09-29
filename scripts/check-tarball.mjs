@@ -31,12 +31,14 @@ const required = [
   'package/cordis.patch.yml',
   'package/lib/index.js',
   'package/lib/index.d.ts',
+  'package/lib/client.js',
   'package/README.md',
   'package/README.zh.md',
   'package/LICENSE',
   'package/CHANGELOG.md',
   'package/docs/adr/0001-delegate-chat-to-official-pi-ai-adapter.md',
   'package/docs/adr/0002-route-name-and-settings-namespace.md',
+  'package/docs/adr/0003-usage-ui-in-host-slots-over-the-connection-channel.md',
 ]
 const missing = required.filter((entry) => !listing.includes(entry))
 if (missing.length > 0) {
@@ -59,6 +61,10 @@ mkdirSync(scratch, { recursive: true })
 execFileSync('tar', ['-xzf', packed[0], '-C', '.tmp/tarball-check', 'package/package.json', 'package/cordis.patch.yml'], { cwd: root, stdio: 'inherit' })
 const manifest = JSON.parse(readFileSync(join(scratch, 'package/package.json'), 'utf8'))
 const patch = manifest?.dsh?.bundle?.patch
+if (manifest?.dsh?.client?.platform !== 'web' || manifest?.exports?.['./client'] === undefined) {
+  console.error('check-tarball: manifest does not declare the browser half (dsh.client + exports["./client"])')
+  process.exit(1)
+}
 if (patch !== './cordis.patch.yml') {
   console.error(`check-tarball: manifest does not declare dsh.bundle.patch (got ${JSON.stringify(patch)})`)
   process.exit(1)

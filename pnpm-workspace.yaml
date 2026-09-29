@@ -2,6 +2,10 @@
 packages:
   - '.'
 
+# A config or manifest edit makes pnpm want to rebuild node_modules; do it
+# without the interactive prompt so scripted runs (CI, agents) never hang.
+confirmModulesPurge: false
+
 # The @deepseek-ai host packages are published continuously on a nightly
 # cadence; without these exemptions the release-age gate refuses to install
 # the exact versions this plugin compiles against (0.2.0-rc.1).
@@ -23,6 +27,7 @@ minimumReleaseAgeExclude:
   - '@deepseek-ai/dsh-util-crypto@0.2.0-rc.1'
   - '@deepseek-ai/dsh-util-values@0.2.0-rc.1'
   - '@deepseek-ai/dsh-web@0.2.0-rc.1'
+  - '@deepseek-ai/dsh-client-connection@0.2.0-rc.1'
 
 # Skipped on purpose: pi-ai carries optional Google/protobuf provider
 # dependencies whose postinstall builds this plugin never uses.

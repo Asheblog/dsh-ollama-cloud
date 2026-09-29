@@ -67,6 +67,17 @@ Ollama 会下架云端模型（被下架的模型返回 HTTP 410）。本插件�
 - **从端点发现**：调用 `llm/discoverModels` 的界面（如插件市场的 provider 卡）会列出端点当前提供的模型及其上下文窗口与输入类型；只有能被 `/api/show` 完整描述的模型才会作为候选返回。
 - **手工增删**：在插件配置里覆盖 `models`（见下）。`enabled: false` 可以把某个内置模型藏起来。
 
+### 界面里的云端用量
+
+插件带一个浏览器半侧，直接渲染在宿主自己的界面里——不另开页面，也不需要任何供应商 UI 壳插件：
+
+- **Models 页卡片**：`设置 → Models` 的 Ollama Cloud 行内，每个计费窗口一条 meter（剩余百分比 + 重置时间），主窗口的每模型请求数，**只写**的 API Key 输入框，以及刷新按钮。
+- **侧栏行**：会话列表下方一行紧凑的剩余额度，点击展开分窗口详情；侧栏挂载时拉一次，之后每 15 分钟刷新一次。
+
+卡片通过本插件自己的宿主通道（`/ollama-cloud`）读取用量，因此 API Key 始终留在宿主侧、不会进入浏览器。本地/自建端点对 `/usage` 返回 404 时显示"此端点不上报云端用量"而不是报错，并且已有快照会继续显示而不是消失。
+
+> 用量通道需要组合里的 `connection` 行注入 `webServer`；本 bundle 的 patch 会补上（没有 connection 行的 profile 会跳过）。安装或更新后请**完整重启一次** Harness——在重启前卡片会自己说明这一点。
+
 ## 配置
 
 所有字段都可以在插件配置页修改，也会在 profile 的 `cordis.patch.yml` 里按行覆盖：
@@ -134,6 +145,7 @@ Ollama 会下架云端模型（被下架的模型返回 HTTP 410）。本插件�
 - 验证目标：DSH `0.2.0-rc.1`（`@deepseek-ai/dsh-*` 的 peer 范围是 `>=0.2.0-rc.1`，无上界；官方新版本若出现回归会记入 `dsh.compatibility.blocklist`）。
 - 运行依赖：`@earendil-works/pi-ai`（与 Harness 自身的 `dsh-llm-pi-ai` 同源）。
 - 协议解析、流式转换、回放与工具调用全部委托官方 `@deepseek-ai/dsh-llm-pi-ai` 的 `PiAiAdapter`，本插件只提供 Ollama 特有的连接事实、模型目录与档位元数据。设计依据见 [ADR 0001](docs/adr/0001-delegate-chat-to-official-pi-ai-adapter.zh.md)。
+- 浏览器半侧只占用宿主槽位（`settings.models.provider-card`、`sidebar.footer.action`）并使用宿主主题 token，不依赖任何其它客户端包。其 RPC 通道（`/ollama-cloud` + `usage/read`）与生态里既有 Ollama 供应商 UI 调用的完全一致，因此那些 UI 也能直接读到本插件的用量。
 - 已知限制：Ollama 的 OpenAI 兼容面不支持 `tool_choice`、`logprobs`，也不提供 prompt cache 统计；用量字段以它实际返回的为准。
 
 ## 开发

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0 — 2026-09-29
+
+- Adds the browser half: an Ollama Cloud usage card inside the official Models
+  page row (`settings.models.provider-card`) and a compact remaining-quota row
+  in the sidebar footer.
+- Reads account usage from `GET <base>/usage` through a host-side connection
+  channel (`/ollama-cloud`), so the API key never reaches the browser. A local
+  or self-hosted endpoint's 404 renders as "does not report cloud usage", and
+  the last good snapshot keeps showing.
+- Adds a write-only API-key field to the card, storing values through the
+  harness credentials seam under the configured reference.
+- Repairs the composition's `connection` row (`inject: [webRuntime, webServer]`)
+  from the bundle patch, which is what lets the usage channel mount on the
+  desktop composition.
+
 ## 0.1.0 — 2026-09-29
 
 First release.

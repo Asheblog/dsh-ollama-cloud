@@ -15,6 +15,8 @@ import type { Context } from '@deepseek-ai/cordis'
 // Type-only: makes `ctx.fiber.entry` (the loader row this plugin runs as)
 // visible, which is how the plugin learns its own settings namespace.
 import type {} from '@deepseek-ai/cordis-plugin-loader'
+// Type-only: makes `ctx.connection` (the browser session's RPC registry) visible.
+import type {} from '@deepseek-ai/dsh-client-connection'
 import { attributionHeaders, LlmError, type LlmDiscoveredModel, type LlmModelDiscoveryRequest } from '@deepseek-ai/dsh-llm'
 
 import { OllamaCloudAdapter } from './adapter.js'
@@ -27,6 +29,7 @@ import {
 } from './config.js'
 import { createCredentialResolver, type ResolveCredential } from './credentials.js'
 import { discoverModels, nativeBaseFrom } from './discovery.js'
+import { createUsageRpcHandler, USAGE_RPC_CHANNEL } from './rpc.js'
 import { OllamaWebFetchProvider, OllamaWebSearchProvider } from './web.js'
 
 export { OllamaCloudAdapter } from './adapter.js'
@@ -52,6 +55,23 @@ export { DEFAULT_MODELS } from './catalog.js'
 export { plainOptions } from './config.js'
 export type { OllamaModelEntry } from './catalog.js'
 export { DEFAULT_DISCOVERY_TIMEOUT_MS, discoverModels, nativeBaseFrom } from './discovery.js'
+export {
+  CREDENTIAL_SET_ENDPOINT,
+  CREDENTIAL_STATUS_ENDPOINT,
+  createUsageRpcHandler,
+  USAGE_ENDPOINT,
+  USAGE_RPC_CHANNEL,
+} from './rpc.js'
+export type { CredentialSetValue, CredentialStatusValue, UsageReadValue, UsageRpcHandler } from './rpc.js'
+export {
+  decodeUsageResponse,
+  readUsage,
+  USAGE_MAX_BYTES,
+  USAGE_UNSUPPORTED,
+  USAGE_WINDOW_IDS,
+  UsageError,
+} from './usage.js'
+export type { OllamaUsageModelCount, OllamaUsageSnapshot, OllamaUsageWindow, UsageWindowId } from './usage.js'
 export { GENERIC_EFFORTS, offeredLevels, pinEfforts, policyFromThinking } from './reasoning.js'
 export type { ReasoningPolicy, ThinkingLevel } from './reasoning.js'
 export { createOllamaCloudAuth, createPiAiProfile, toPiAiModel } from './profile.js'
@@ -154,6 +174,22 @@ export function apply(ctx: Context, config: ConfigShape): void {
       signal,
     )
     return discovered
+  })
+
+  // Optional surface: a headless composition has no browser session, so the
+  // usage channel simply never mounts there and everything else keeps working.
+  ctx.inject(['connection'], (connectionCtx) => {
+    const handler = createUsageRpcHandler({
+      connection,
+      resolveCredential,
+      credentials: () => ctx.get('credentials'),
+      fetch,
+      attribution: attributionHeaders,
+    })
+    connectionCtx.effect(
+      () => connectionCtx.connection.rpc.handle(USAGE_RPC_CHANNEL, handler),
+      'llm-ollama-cloud: usage RPC channel',
+    )
   })
 
   // Optional capability: a headless composition without the web seam simply

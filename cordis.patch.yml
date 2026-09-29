@@ -1,11 +1,14 @@
-# dsh-ollama-cloud bundle patch: mount the Ollama Cloud route as one loader row.
+# dsh-ollama-cloud bundle patch: mount the Ollama Cloud route as one loader row,
+# and repair the desktop composition's connection row so this plugin's usage
+# channel can register on it.
 #
 # Every config field is optional. The row registers the `ollama-cloud` provider
 # route with the curated cloud model catalog — each model carrying the thinking
 # levels its own wire metadata reports — resolves the credential through the
-# harness credentials seam (`OLLAMA_API_KEY` by default) per request, and reads
-# the native `/api` surface for model discovery. Installing this bundle is the
-# whole setup: pick a model, then adjust its reasoning effort from the composer.
+# harness credentials seam (`OLLAMA_API_KEY` by default) per request, reads the
+# native `/api` surface for model discovery, and serves the browser card's
+# `/ollama-cloud` usage channel. Installing this bundle is the whole setup:
+# pick a model, adjust its reasoning effort, and watch the account's usage.
 #
 # The row is addressed by id in later layers, so a profile cordis.patch.yml can
 # override any field without touching this package:
@@ -21,3 +24,13 @@
         retryPolicy:
           mode: normal
           maxRetries: 5
+
+# `connection.rpc.handle()` mounts its channels through the service's own
+# `webServer`, but the web-app bundle declares the connection row with
+# `inject: [webRuntime]` only — without `webServer` the registration throws
+# ("cannot get property \"webServer\" without inject") and the usage channel
+# never mounts. A patch replaces the whole `inject` array, so `webRuntime` is
+# restated. Layers apply after the bundle list, so this wins over web-app's row;
+# profiles without a connection row skip the patch with a warning.
+- id: connection
+  inject: [webRuntime, webServer]
