@@ -18,7 +18,7 @@
  * @module dsh-ollama-cloud/catalog
  */
 
-import type { ThinkingLevel } from './reasoning.js'
+import { GENERIC_EFFORTS, type ThinkingLevel } from './reasoning.js'
 
 /** One model entry advertised by the plugin and accepted for chat requests. */
 export interface OllamaModelEntry {
@@ -124,10 +124,9 @@ export const DEFAULT_MODELS: readonly OllamaModelEntry[] = [
     name: 'MiniMax M3',
     contextWindow: 512000,
     vision: true,
-    // The metadata reports the thinking capability without a level list; the
-    // boolean treatment matches how Ollama answers such models.
-    reasoningEfforts: { off: 'none', high: 'high' },
-    defaultEffort: 'high',
+    // The metadata reports the thinking capability without a ladder, so the
+    // standard names are offered and no default is claimed.
+    reasoningEfforts: GENERIC_EFFORTS,
   },
   {
     id: 'minimax-m2.7',
@@ -176,7 +175,3 @@ export const DEFAULT_MODELS: readonly OllamaModelEntry[] = [
   },
 ]
 
-/** Built-in entries indexed by id, for resolving configured overrides. */
-export const DEFAULT_MODELS_BY_ID: ReadonlyMap<string, OllamaModelEntry> = new Map(
-  DEFAULT_MODELS.map((model) => [model.id, model]),
-)

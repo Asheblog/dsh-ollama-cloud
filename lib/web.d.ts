@@ -18,8 +18,6 @@ import { type WebFetchProvider, type WebFetchRequest, type WebFetchResult, type 
 export declare const OLLAMA_WEB_PROVIDER_ID = "ollama-cloud";
 /** `/api/web_search` accepts at most ten results per call. */
 export declare const MAX_SEARCH_RESULTS = 10;
-/** Default per-attempt budget for one Ollama web request. */
-export declare const DEFAULT_WEB_REQUEST_TIMEOUT_MS = 15000;
 /** Error code for a provider-side attempt budget expiry; retried once. */
 export declare const OLLAMA_WEB_TIMEOUT = "OLLAMA_WEB_TIMEOUT";
 /** Error code for a retryable transport failure before an HTTP response arrives. */
@@ -32,7 +30,7 @@ export interface OllamaWebProviderOptions {
     baseURL: () => string;
     /** Credential for one request; `undefined` means the request cannot run. */
     resolveApiKey: () => Promise<string | undefined>;
-    /** Per-attempt budget in milliseconds; defaults to {@link DEFAULT_WEB_REQUEST_TIMEOUT_MS}. */
+    /** Per-attempt budget in milliseconds; defaults to the configured `requestTimeoutMs`. */
     requestTimeoutMs?: () => number;
     /** Fetch implementation, injectable for tests. */
     fetch?: typeof fetch;
@@ -53,14 +51,27 @@ export declare function decodeSearchResponse(body: unknown): WebSearchResult;
  * @returns the extracted page text.
  */
 export declare function decodeFetchResponse(body: unknown): string;
-/** Ollama Cloud search provider; redirects fail as `WEB_PROVIDER_ERROR`. */
-export declare class OllamaWebSearchProvider implements WebSearchProvider {
-    private readonly options;
+/**
+ * Shared shape of the two Ollama web providers: one backend id, one
+ * caller-owned options bag, and the same local usability check. Both
+ * capabilities are served by the same endpoint, so the id and the check are
+ * facts about the backend, not about search or fetch separately.
+ */
+declare abstract class OllamaWebEndpoint {
+    protected readonly options: OllamaWebProviderOptions;
+    /** Stable provider id both capabilities register under. */
     readonly id = "ollama-cloud";
-    /** @param options - caller-owned resolution hooks. */
+    /**
+     * @param options - caller-owned resolution hooks.
+     *   Public because the two concrete providers inherit it; the class itself is
+     *   abstract and never constructed.
+     */
     constructor(options: OllamaWebProviderOptions);
     /** @returns whether the configured base URL is parseable. */
     available(): boolean;
+}
+/** Ollama Cloud search provider; redirects fail as `WEB_PROVIDER_ERROR`. */
+export declare class OllamaWebSearchProvider extends OllamaWebEndpoint implements WebSearchProvider {
     /**
      * Run one search through `/api/web_search`.
      * @param request - query and optional result bound.
@@ -70,13 +81,7 @@ export declare class OllamaWebSearchProvider implements WebSearchProvider {
     search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult>;
 }
 /** Ollama Cloud fetch provider; redirects fail as `WEB_PROVIDER_ERROR`. */
-export declare class OllamaWebFetchProvider implements WebFetchProvider {
-    private readonly options;
-    readonly id = "ollama-cloud";
-    /** @param options - caller-owned resolution hooks. */
-    constructor(options: OllamaWebProviderOptions);
-    /** @returns whether the configured base URL is parseable. */
-    available(): boolean;
+export declare class OllamaWebFetchProvider extends OllamaWebEndpoint implements WebFetchProvider {
     /**
      * Retrieve one URL through `/api/web_fetch`.
      * @param request - the URL to fetch.
@@ -85,4 +90,5 @@ export declare class OllamaWebFetchProvider implements WebFetchProvider {
      */
     fetch(request: WebFetchRequest, signal?: AbortSignal): Promise<WebFetchResult>;
 }
+export {};
 //# sourceMappingURL=web.d.ts.map

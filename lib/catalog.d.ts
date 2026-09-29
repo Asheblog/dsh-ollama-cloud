@@ -17,7 +17,7 @@
  *
  * @module dsh-ollama-cloud/catalog
  */
-import type { ThinkingLevel } from './reasoning.js';
+import { type ThinkingLevel } from './reasoning.js';
 /** One model entry advertised by the plugin and accepted for chat requests. */
 export interface OllamaModelEntry {
     /** Model id Ollama accepts on the wire. */
@@ -41,6 +41,4 @@ export interface OllamaModelEntry {
 }
 /** The snapshot of Ollama Cloud models this plugin ships with. */
 export declare const DEFAULT_MODELS: readonly OllamaModelEntry[];
-/** Built-in entries indexed by id, for resolving configured overrides. */
-export declare const DEFAULT_MODELS_BY_ID: ReadonlyMap<string, OllamaModelEntry>;
 //# sourceMappingURL=catalog.d.ts.map

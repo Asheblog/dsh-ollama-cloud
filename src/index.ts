@@ -38,7 +38,7 @@ export {
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_MAX_TOKENS,
   DEFAULT_STREAM_IDLE_TIMEOUT_MS,
-  DEFAULT_WEB_REQUEST_TIMEOUT_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   DISPLAY_NAME,
   nativeAPIBaseURL,
   openAICompatibleBaseURL,
@@ -48,11 +48,11 @@ export {
 export { createCredentialResolver } from './credentials.js'
 export type { ResolveCredential } from './credentials.js'
 export type { Config as ConfigShape, ConfiguredModelEntry, ConnectionOptions, Options, ResolvedModel } from './config.js'
-export { DEFAULT_MODELS, DEFAULT_MODELS_BY_ID } from './catalog.js'
+export { DEFAULT_MODELS } from './catalog.js'
 export { plainOptions } from './config.js'
 export type { OllamaModelEntry } from './catalog.js'
 export { DEFAULT_DISCOVERY_TIMEOUT_MS, discoverModels, nativeBaseFrom } from './discovery.js'
-export { offeredLevels, pinEfforts, policyFromThinking } from './reasoning.js'
+export { GENERIC_EFFORTS, offeredLevels, pinEfforts, policyFromThinking } from './reasoning.js'
 export type { ReasoningPolicy, ThinkingLevel } from './reasoning.js'
 export { createOllamaCloudAuth, createPiAiProfile, toPiAiModel } from './profile.js'
 export { MAX_SEARCH_RESULTS, OLLAMA_WEB_PROVIDER_ID, OllamaWebFetchProvider, OllamaWebSearchProvider } from './web.js'
@@ -148,7 +148,7 @@ export function apply(ctx: Context, config: ConfigShape): void {
       {
         baseURL,
         ...apiKey === undefined ? {} : { apiKey },
-        requestTimeoutMs: facts.webRequestTimeoutMs,
+        requestTimeoutMs: facts.requestTimeoutMs,
       },
       { fetch, attribution: attributionHeaders },
       signal,
@@ -162,7 +162,7 @@ export function apply(ctx: Context, config: ConfigShape): void {
     const options = {
       baseURL: () => connection().nativeBaseURL,
       resolveApiKey: () => storedKey(connection()),
-      requestTimeoutMs: () => connection().webRequestTimeoutMs,
+      requestTimeoutMs: () => connection().requestTimeoutMs,
     }
     webCtx.effect(() => {
       const disposeSearch = webCtx.web.registerSearchProvider(new OllamaWebSearchProvider(options))

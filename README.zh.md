@@ -50,7 +50,7 @@ Key 在 <https://ollama.com/settings/keys> 申请。模型目录与元数据接�
 | `glm-5.2` | 1,048,576 | — | Off / High / Max | High |
 | `gpt-oss:120b` | 131,072 | — | Low / Medium / High | Medium |
 | `gpt-oss:20b` | 131,072 | — | Low / Medium / High | Medium |
-| `minimax-m3` | 512,000 | ✔ | Off / High | High |
+| `minimax-m3` | 512,000 | ✔ | Off / Low / Medium / High / Max | — |
 | `minimax-m2.7` | 196,608 | — | High | High |
 | `nemotron-3-ultra` | 262,144 | — | Off / High | High |
 | `nemotron-3-super` | 262,144 | — | Off / High | High |
@@ -58,7 +58,7 @@ Key 在 <https://ollama.com/settings/keys> 申请。模型目录与元数据接�
 | `gemma4:31b` | 262,144 | ✔ | Off / High | Off |
 | `mistral-large-3:675b` | 262,144 | ✔ | （不支持思考） | — |
 
-Ollama 只支持布尔思考开关的模型（如 `kimi-k2.6`、`gemma4:31b`）只暴露 Off 与 High 两档——High 在 wire 上就是「打开思考」；`minimax-m2.7` 的元数据是 `[true]`，关不掉思考，所以只有 High。
+Ollama 只支持布尔思考开关的模型（如 `kimi-k2.6`、`gemma4:31b`）只暴露 Off 与 High 两档——High 在 wire 上就是「打开思考」；`minimax-m2.7` 的元数据是 `[true]`，关不掉思考，所以只有 High。`minimax-m3` 只报告了思考能力、没有档位阶梯，因此走标准档位且不声明默认值；任何「目录与你的配置都没描述过」的模型同理。
 
 ### 刷新模型目录
 
@@ -80,7 +80,7 @@ Ollama 会下架云端模型（被下架的模型返回 HTTP 410）。本插件�
     maxTokens: 32768                 # 未单独声明的模型的输出上限
     defaultContextWindow: 262144     # 未单独声明的模型的上下文回退
     streamIdleTimeoutMs: 300000      # 流式读取的空闲上限
-    webRequestTimeoutMs: 15000       # Web 搜索/抓取的每次尝试预算
+    requestTimeoutMs: 15000       # 非聊天请求的每次尝试预算（模型发现、Web 搜索/抓取）
     retryPolicy:                     # 由 dsh-llm-retry 执行
       mode: normal
       maxRetries: 5
@@ -100,7 +100,7 @@ Ollama 会下架云端模型（被下架的模型返回 HTTP 410）。本插件�
 
 字段语义：
 
-- `reasoningEfforts` 的**键**是选择器提供的档位（`off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`），**值**是发到 Ollama 的拼写（例如 `off: none`）。`false` 表示该模型不可调思考；省略则沿用内置条目（新 id 省略即 `false`）。
+- `reasoningEfforts` 的**键**是选择器提供的档位（`off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`），**值**是发到 Ollama 的拼写（例如 `off: none`）。`false` 表示该模型不可调思考；省略则沿用内置条目；若 id 既不在内置目录、条目里也没写，则走标准档（`off`/`low`/`medium`/`high`/`max`）且不声明默认档位。
 - `defaultEffort` 必须在 `reasoningEfforts` 里；会话没选档位时用它，否则跟随模型自己的默认。
 - 覆写条目只在**没有**改 `reasoningEfforts` 时才继承内置默认档位——改了档位集合就以你的声明为准。
 - 显式写了 `defaultEffort` 但不在可选档位里会在装载时报错，而不是静默降级。

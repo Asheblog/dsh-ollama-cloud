@@ -50,7 +50,7 @@ Snapshot of live metadata (`/api/tags` + `/api/show`) taken 2026-09-29:
 | `glm-5.2` | 1,048,576 | — | Off / High / Max | High |
 | `gpt-oss:120b` | 131,072 | — | Low / Medium / High | Medium |
 | `gpt-oss:20b` | 131,072 | — | Low / Medium / High | Medium |
-| `minimax-m3` | 512,000 | ✔ | Off / High | High |
+| `minimax-m3` | 512,000 | ✔ | Off / Low / Medium / High / Max | — |
 | `minimax-m2.7` | 196,608 | — | High | High |
 | `nemotron-3-ultra` | 262,144 | — | Off / High | High |
 | `nemotron-3-super` | 262,144 | — | Off / High | High |
@@ -58,7 +58,7 @@ Snapshot of live metadata (`/api/tags` + `/api/show`) taken 2026-09-29:
 | `gemma4:31b` | 262,144 | ✔ | Off / High | Off |
 | `mistral-large-3:675b` | 262,144 | ✔ | (no thinking control) | — |
 
-Models whose metadata is a boolean switch (`kimi-k2.6`, `gemma4:31b`, …) expose Off and High only — on the wire, High means "thinking on". `minimax-m2.7` reports `[true]`, so thinking cannot be switched off and only High is offered.
+Models whose metadata is a boolean switch (`kimi-k2.6`, `gemma4:31b`, …) expose Off and High only — on the wire, High means "thinking on". `minimax-m2.7` reports `[true]`, so thinking cannot be switched off and only High is offered. `minimax-m3` reports the thinking capability without a level ladder, so it takes the standard ladder and claims no default; the same applies to any model neither the catalog nor your configuration describes.
 
 ### Refreshing the catalog
 
@@ -80,7 +80,7 @@ Every field is editable from the plugin settings page and overridable per row in
     maxTokens: 32768                 # output cap for models that declare none
     defaultContextWindow: 262144     # context fallback for models that declare none
     streamIdleTimeoutMs: 300000      # maximum idle time between stream reads
-    webRequestTimeoutMs: 15000       # per-attempt budget for web search/fetch
+    requestTimeoutMs: 15000       # per-attempt budget for the non-chat requests (discovery, web search/fetch)
     retryPolicy:                     # executed by dsh-llm-retry
       mode: normal
       maxRetries: 5
@@ -100,7 +100,7 @@ Every field is editable from the plugin settings page and overridable per row in
 
 Field semantics:
 
-- `reasoningEfforts` keys are the levels the picker offers (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`); values are the spellings sent to Ollama (`off: none`). `false` declares a model with no thinking control; omission inherits the built-in entry (and defaults to `false` for an id no built-in entry matches).
+- `reasoningEfforts` keys are the levels the picker offers (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`); values are the spellings sent to Ollama (`off: none`). `false` declares a model with no thinking control; omission inherits the built-in entry, and an id neither the catalog nor the entry describes takes the standard ladder (`off`/`low`/`medium`/`high`/`max`) with no default claimed.
 - `defaultEffort` must be one of the offered levels. It is materialized when a session picks none; otherwise the model's own default applies.
 - An override inherits the built-in default level only while it leaves `reasoningEfforts` alone — changing the level set makes the declaration authoritative.
 - A declared `defaultEffort` outside the offered set fails at mount instead of degrading silently.

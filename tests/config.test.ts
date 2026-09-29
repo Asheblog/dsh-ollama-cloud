@@ -8,7 +8,7 @@ import {
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_MAX_TOKENS,
   DEFAULT_STREAM_IDLE_TIMEOUT_MS,
-  DEFAULT_WEB_REQUEST_TIMEOUT_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   nativeAPIBaseURL,
   openAICompatibleBaseURL,
   PROVIDER,
@@ -58,7 +58,7 @@ describe('resolveConnection', () => {
     expect(connection.defaultContextWindow).toBe(DEFAULT_CONTEXT_WINDOW)
     expect(connection.defaultMaxTokens).toBe(DEFAULT_MAX_TOKENS)
     expect(connection.streamIdleTimeoutMs).toBe(DEFAULT_STREAM_IDLE_TIMEOUT_MS)
-    expect(connection.webRequestTimeoutMs).toBe(DEFAULT_WEB_REQUEST_TIMEOUT_MS)
+    expect(connection.requestTimeoutMs).toBe(DEFAULT_REQUEST_TIMEOUT_MS)
     expect(connection.models).toHaveLength(DEFAULT_MODELS.length)
     expect(connection.models.map((model) => model.id)).toEqual(DEFAULT_MODELS.map((model) => model.id))
   })
@@ -103,6 +103,21 @@ describe('resolveConnection', () => {
 
   it('treats an empty override list as no overrides', () => {
     expect(resolveConnection({ models: [] }).models).toHaveLength(DEFAULT_MODELS.length)
+  })
+
+  it('gives a model nothing describes the standard ladder instead of no control', () => {
+    const added = resolveConnection({ models: [{ id: 'mystery-model' }] })
+      .models.find((model) => model.id === 'mystery-model')
+    expect(added?.efforts).toEqual({
+      off: 'none',
+      minimal: null,
+      low: 'low',
+      medium: 'medium',
+      high: 'high',
+      xhigh: null,
+      max: 'max',
+    })
+    expect(added?.defaultEffort).toBeUndefined()
   })
 
   it('lets a configured entry declare non-reasoning', () => {

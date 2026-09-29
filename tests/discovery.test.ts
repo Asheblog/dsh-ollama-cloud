@@ -62,13 +62,12 @@ describe('decodeShowResponse', () => {
     })
   })
 
-  it('treats a thinking capability without a level list as boolean thinking', () => {
+  it('offers the standard ladder when the endpoint names thinking without a ladder', () => {
     expect(decodeShowResponse('minimax-m3', MINIMAX_M3_SHOW)).toEqual({
       id: 'minimax-m3',
       contextWindow: 512000,
       vision: true,
-      reasoningEfforts: { off: 'none', high: 'high' },
-      defaultEffort: 'high',
+      reasoningEfforts: { off: 'none', low: 'low', medium: 'medium', high: 'high', max: 'max' },
     })
   })
 

@@ -29,7 +29,7 @@ export declare const DEFAULT_MAX_TOKENS = 32768;
 /** Maximum provider idle time while one stream read is outstanding. */
 export declare const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300000;
 /** Per-attempt budget for one Ollama web-capability request. */
-export declare const DEFAULT_WEB_REQUEST_TIMEOUT_MS = 15000;
+export declare const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 /** One model entry as plugin configuration expresses it. */
 export interface ConfiguredModelEntry {
     /** Model id Ollama accepts on the wire. */
@@ -45,8 +45,8 @@ export interface ConfiguredModelEntry {
     /**
      * Selectable thinking levels and the wire spelling each sends, or `false`
      * for a model without thinking control. Omitted keeps the built-in entry's
-     * mapping when the id matches one; an id no built-in entry matches defaults
-     * to `false`.
+     * mapping when the id matches one; an id neither the catalog nor this entry
+     * describes takes the standard ladder (`off` to `max`).
      */
     readonly reasoningEfforts?: Partial<Record<ThinkingLevel, string>> | false;
     /** Default level materialized when a session picks none; must be offered. */
@@ -73,7 +73,7 @@ export interface Options {
     /** Maximum provider idle time while one stream read is outstanding. */
     streamIdleTimeoutMs?: number;
     /** Per-attempt budget for Ollama web-capability requests. */
-    webRequestTimeoutMs?: number;
+    requestTimeoutMs?: number;
     /** Provider-owned model-request retry policy; omission uses the host defaults. */
     retryPolicy?: RetryPolicyConfig;
 }
@@ -99,7 +99,7 @@ export interface Config {
     /** Maximum provider idle time while one stream read is outstanding. */
     streamIdleTimeoutMs: Volatile<number>;
     /** Per-attempt budget for Ollama web-capability requests. */
-    webRequestTimeoutMs: Volatile<number>;
+    requestTimeoutMs: Volatile<number>;
     /** Provider-owned model-request retry policy; omission uses the host defaults. */
     retryPolicy?: RetryPolicyConfig;
 }
@@ -141,7 +141,7 @@ export interface ConnectionOptions {
     /** Maximum provider idle time while one stream read is outstanding. */
     readonly streamIdleTimeoutMs: number;
     /** Per-attempt budget for Ollama web-capability requests. */
-    readonly webRequestTimeoutMs: number;
+    readonly requestTimeoutMs: number;
     /** Provider-owned retry policy, already resolved. */
     readonly retryPolicy: ResolvedRetryPolicy;
 }

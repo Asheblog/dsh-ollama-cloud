@@ -17,7 +17,7 @@ import { resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
 import z from '@deepseek-ai/schemastery'
 
 import { DEFAULT_MODELS, type OllamaModelEntry } from './catalog.js'
-import { pinEfforts, THINKING_LEVELS, type PinnedEfforts, type ThinkingLevel } from './reasoning.js'
+import { GENERIC_EFFORTS, pinEfforts, THINKING_LEVELS, type PinnedEfforts, type ThinkingLevel } from './reasoning.js'
 
 /** Provider route this plugin registers. */
 export const PROVIDER = 'ollama-cloud'
@@ -41,7 +41,7 @@ export const DEFAULT_MAX_TOKENS = 32768
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300000
 
 /** Per-attempt budget for one Ollama web-capability request. */
-export const DEFAULT_WEB_REQUEST_TIMEOUT_MS = 15000
+export const DEFAULT_REQUEST_TIMEOUT_MS = 15000
 
 /** One model entry as plugin configuration expresses it. */
 export interface ConfiguredModelEntry {
@@ -58,8 +58,8 @@ export interface ConfiguredModelEntry {
   /**
    * Selectable thinking levels and the wire spelling each sends, or `false`
    * for a model without thinking control. Omitted keeps the built-in entry's
-   * mapping when the id matches one; an id no built-in entry matches defaults
-   * to `false`.
+   * mapping when the id matches one; an id neither the catalog nor this entry
+   * describes takes the standard ladder (`off` to `max`).
    */
   readonly reasoningEfforts?: Partial<Record<ThinkingLevel, string>> | false
   /** Default level materialized when a session picks none; must be offered. */
@@ -87,7 +87,7 @@ export interface Options {
   /** Maximum provider idle time while one stream read is outstanding. */
   streamIdleTimeoutMs?: number
   /** Per-attempt budget for Ollama web-capability requests. */
-  webRequestTimeoutMs?: number
+  requestTimeoutMs?: number
   /** Provider-owned model-request retry policy; omission uses the host defaults. */
   retryPolicy?: RetryPolicyConfig
 }
@@ -114,7 +114,7 @@ export interface Config {
   /** Maximum provider idle time while one stream read is outstanding. */
   streamIdleTimeoutMs: Volatile<number>
   /** Per-attempt budget for Ollama web-capability requests. */
-  webRequestTimeoutMs: Volatile<number>
+  requestTimeoutMs: Volatile<number>
   /** Provider-owned model-request retry policy; omission uses the host defaults. */
   retryPolicy?: RetryPolicyConfig
 }
@@ -138,7 +138,7 @@ export const Config = z.object({
   maxTokens: z.number().step(1).min(1).default(DEFAULT_MAX_TOKENS).volatile(),
   defaultContextWindow: z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW).volatile(),
   streamIdleTimeoutMs: z.number().step(1).min(1).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS).volatile(),
-  webRequestTimeoutMs: z.number().step(1).min(1).default(DEFAULT_WEB_REQUEST_TIMEOUT_MS).volatile(),
+  requestTimeoutMs: z.number().step(1).min(1).default(DEFAULT_REQUEST_TIMEOUT_MS).volatile(),
   retryPolicy: RetryPolicySchema,
 }) as unknown as z<Config>
 
@@ -179,7 +179,7 @@ export interface ConnectionOptions {
   /** Maximum provider idle time while one stream read is outstanding. */
   readonly streamIdleTimeoutMs: number
   /** Per-attempt budget for Ollama web-capability requests. */
-  readonly webRequestTimeoutMs: number
+  readonly requestTimeoutMs: number
   /** Provider-owned retry policy, already resolved. */
   readonly retryPolicy: ResolvedRetryPolicy
 }
@@ -237,6 +237,8 @@ function assertBaseURL(raw: string): string {
 }
 
 /** Refuse a numeric override that is not a positive count. */
+function assertPositive(value: number, field: string): number
+function assertPositive(value: number | undefined, field: string): number | undefined
 function assertPositive(value: number | undefined, field: string): number | undefined {
   if (value === undefined) return undefined
   if (!Number.isFinite(value) || value <= 0 || !Number.isInteger(value)) {
@@ -283,9 +285,17 @@ function resolveModel(
   )
   const maxTokens = assertPositive(entry?.maxTokens ?? base?.maxTokens, `model "${id}" maxTokens`)
   const declared = entry?.reasoningEfforts ?? base?.reasoningEfforts
-  const efforts = declared === undefined || declared === false
+  // Nothing declares this model's levels: it is a model neither the catalog nor
+  // the user has described, so it takes the generic ladder rather than silently
+  // losing the effort control the composer would otherwise offer. Ollama
+  // accepts these names for any model and falls back to its own default for one
+  // that does not use them. A model that truly cannot think says so explicitly
+  // with `reasoningEfforts: false`.
+  const efforts = declared === false
     ? pinEfforts({})
-    : pinEfforts(resolveEfforts(id, declared))
+    : declared === undefined
+      ? pinEfforts(GENERIC_EFFORTS)
+      : pinEfforts(resolveEfforts(id, declared))
   const declaredDefault = entry?.defaultEffort
   if (declaredDefault !== undefined && efforts[declaredDefault] === null) {
     throw new Error(
@@ -358,10 +368,10 @@ export function resolveConnection(config: Options): ConnectionOptions {
     config.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS,
     'streamIdleTimeoutMs',
   ) ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS
-  const webRequestTimeoutMs = assertPositive(
-    config.webRequestTimeoutMs ?? DEFAULT_WEB_REQUEST_TIMEOUT_MS,
-    'webRequestTimeoutMs',
-  ) ?? DEFAULT_WEB_REQUEST_TIMEOUT_MS
+  const requestTimeoutMs = assertPositive(
+    config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    'requestTimeoutMs',
+  ) ?? DEFAULT_REQUEST_TIMEOUT_MS
 
   const rawRef = (config.apiKeyEnv ?? DEFAULT_API_KEY_ENV).trim()
   const apiKeyEnv = rawRef.length === 0 ? undefined : credentialRef(rawRef)
@@ -375,7 +385,7 @@ export function resolveConnection(config: Options): ConnectionOptions {
     defaultContextWindow,
     defaultMaxTokens,
     streamIdleTimeoutMs,
-    webRequestTimeoutMs,
+    requestTimeoutMs,
     retryPolicy: resolveRetryPolicy(config.retryPolicy, 'llm-ollama-cloud retryPolicy'),
   }
 }
@@ -397,7 +407,7 @@ export function plainOptions(config: Config): Options {
     maxTokens: config.maxTokens.get(),
     defaultContextWindow: config.defaultContextWindow.get(),
     streamIdleTimeoutMs: config.streamIdleTimeoutMs.get(),
-    webRequestTimeoutMs: config.webRequestTimeoutMs.get(),
+    requestTimeoutMs: config.requestTimeoutMs.get(),
     ...config.retryPolicy === undefined ? {} : { retryPolicy: config.retryPolicy },
   }
 }
@@ -411,7 +421,7 @@ export function optionReferences(config: Config): readonly Volatile<unknown>[] {
     config.maxTokens,
     config.defaultContextWindow,
     config.streamIdleTimeoutMs,
-    config.webRequestTimeoutMs,
+    config.requestTimeoutMs,
   ]
 }
 

@@ -19,7 +19,7 @@ import type { LlmDiscoveredModel, ModelModality } from '@deepseek-ai/dsh-llm'
 
 import type { OllamaModelEntry } from './catalog.js'
 import { nativeAPIBaseURL } from './config.js'
-import { offeredEffortMap, policyFromThinking, WIRE_BOOLEAN_ON, WIRE_NONE } from './reasoning.js'
+import { GENERIC_EFFORTS, offeredEffortMap, policyFromThinking } from './reasoning.js'
 
 /** Default per-request budget for one discovery call. */
 export const DEFAULT_DISCOVERY_TIMEOUT_MS = 15000
@@ -115,14 +115,12 @@ export function decodeShowResponse(id: string, body: unknown): OllamaModelEntry 
   const capabilities = readCapabilities(record)
   const contextWindow = readContextWindow(record)
   const policy = policyFromThinking(record.thinking)
-  const booleanTreatment = capabilities?.includes('thinking') === true
+  // The endpoint may name the thinking capability without a ladder: the
+  // standard names apply, and no default is claimed because none was declared.
   const efforts = policy === undefined
-    ? booleanTreatment
-      ? { off: WIRE_NONE, high: WIRE_BOOLEAN_ON }
-      : false
+    ? capabilities?.includes('thinking') === true ? GENERIC_EFFORTS : false
     : offeredEffortMap(policy.efforts)
   const defaultEffort = policy?.defaultEffort
-    ?? (booleanTreatment ? 'high' : undefined)
 
   return {
     id,

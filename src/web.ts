@@ -15,6 +15,9 @@
  */
 
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
+
+import { attemptSignal } from './timeout.js'
+import { DEFAULT_REQUEST_TIMEOUT_MS } from './config.js'
 import {
   WebError,
   type WebFetchProvider,
@@ -32,9 +35,6 @@ export const OLLAMA_WEB_PROVIDER_ID = 'ollama-cloud'
 /** `/api/web_search` accepts at most ten results per call. */
 export const MAX_SEARCH_RESULTS = 10
 
-/** Default per-attempt budget for one Ollama web request. */
-export const DEFAULT_WEB_REQUEST_TIMEOUT_MS = 15000
-
 /** Error code for a provider-side attempt budget expiry; retried once. */
 export const OLLAMA_WEB_TIMEOUT = 'OLLAMA_WEB_TIMEOUT'
 
@@ -50,7 +50,7 @@ export interface OllamaWebProviderOptions {
   baseURL: () => string
   /** Credential for one request; `undefined` means the request cannot run. */
   resolveApiKey: () => Promise<string | undefined>
-  /** Per-attempt budget in milliseconds; defaults to {@link DEFAULT_WEB_REQUEST_TIMEOUT_MS}. */
+  /** Per-attempt budget in milliseconds; defaults to the configured `requestTimeoutMs`. */
   requestTimeoutMs?: () => number
   /** Fetch implementation, injectable for tests. */
   fetch?: typeof fetch
@@ -141,9 +141,9 @@ async function postJsonAttempt(
   callerSignal: AbortSignal | undefined,
 ): Promise<{ status: number; body: unknown }> {
   const fetchImpl = options.fetch ?? fetch
-  const timeoutMs = options.requestTimeoutMs?.() ?? DEFAULT_WEB_REQUEST_TIMEOUT_MS
-  const timeout = AbortSignal.timeout(timeoutMs)
-  const signal = callerSignal === undefined ? timeout : AbortSignal.any([callerSignal, timeout])
+  const timeoutMs = options.requestTimeoutMs?.() ?? DEFAULT_REQUEST_TIMEOUT_MS
+  const attempt = attemptSignal(callerSignal, timeoutMs)
+  const signal = attempt.signal
 
   let response: Response
   try {
@@ -163,7 +163,7 @@ async function postJsonAttempt(
     if (callerSignal?.aborted === true) {
       throw new WebError('ollama-cloud web request aborted by caller', 'ABORTED', { cause: error })
     }
-    if (timeout.aborted) {
+    if (attempt.timedOut()) {
       throw new WebError(`ollama-cloud web request timed out after ${timeoutMs}ms`, OLLAMA_WEB_TIMEOUT, { cause: error })
     }
     if (isRedirectFailure(error)) {
@@ -185,18 +185,31 @@ async function postJsonAttempt(
   }
 }
 
-/** Ollama Cloud search provider; redirects fail as `WEB_PROVIDER_ERROR`. */
-export class OllamaWebSearchProvider implements WebSearchProvider {
+/**
+ * Shared shape of the two Ollama web providers: one backend id, one
+ * caller-owned options bag, and the same local usability check. Both
+ * capabilities are served by the same endpoint, so the id and the check are
+ * facts about the backend, not about search or fetch separately.
+ */
+abstract class OllamaWebEndpoint {
+  /** Stable provider id both capabilities register under. */
   readonly id = OLLAMA_WEB_PROVIDER_ID
 
-  /** @param options - caller-owned resolution hooks. */
-  constructor(private readonly options: OllamaWebProviderOptions) {}
+  /**
+   * @param options - caller-owned resolution hooks.
+   *   Public because the two concrete providers inherit it; the class itself is
+   *   abstract and never constructed.
+   */
+  constructor(protected readonly options: OllamaWebProviderOptions) {}
 
   /** @returns whether the configured base URL is parseable. */
   available(): boolean {
     return URL.canParse(this.options.baseURL())
   }
+}
 
+/** Ollama Cloud search provider; redirects fail as `WEB_PROVIDER_ERROR`. */
+export class OllamaWebSearchProvider extends OllamaWebEndpoint implements WebSearchProvider {
   /**
    * Run one search through `/api/web_search`.
    * @param request - query and optional result bound.
@@ -218,17 +231,7 @@ export class OllamaWebSearchProvider implements WebSearchProvider {
 }
 
 /** Ollama Cloud fetch provider; redirects fail as `WEB_PROVIDER_ERROR`. */
-export class OllamaWebFetchProvider implements WebFetchProvider {
-  readonly id = OLLAMA_WEB_PROVIDER_ID
-
-  /** @param options - caller-owned resolution hooks. */
-  constructor(private readonly options: OllamaWebProviderOptions) {}
-
-  /** @returns whether the configured base URL is parseable. */
-  available(): boolean {
-    return URL.canParse(this.options.baseURL())
-  }
-
+export class OllamaWebFetchProvider extends OllamaWebEndpoint implements WebFetchProvider {
   /**
    * Retrieve one URL through `/api/web_fetch`.
    * @param request - the URL to fetch.

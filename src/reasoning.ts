@@ -28,6 +28,23 @@ export const WIRE_NONE = 'none'
 /** Wire spelling used for models whose only thinking switch is a boolean `true`. */
 export const WIRE_BOOLEAN_ON = 'high'
 
+/**
+ * Levels offered for a model whose metadata never described a ladder.
+ *
+ * Neither the curated catalog nor the endpoint said which levels apply, so the
+ * endpoint's standard names are the only defensible offer: Ollama accepts them
+ * for any model and falls back to the model's own default for a name that does
+ * not resolve there. Nothing declares a default, so a session that picks
+ * nothing keeps the model's own behavior.
+ */
+export const GENERIC_EFFORTS: Partial<Record<ThinkingLevel, string>> = {
+  off: WIRE_NONE,
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  max: 'max',
+}
+
 /** Every harness level mapped to its wire spelling, `null` meaning "not offered". */
 export type PinnedEfforts = Record<ThinkingLevel, string | null>
 

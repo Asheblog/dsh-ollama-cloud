@@ -35,6 +35,8 @@ const required = [
   'package/README.zh.md',
   'package/LICENSE',
   'package/CHANGELOG.md',
+  'package/docs/adr/0001-delegate-chat-to-official-pi-ai-adapter.md',
+  'package/docs/adr/0002-route-name-and-settings-namespace.md',
 ]
 const missing = required.filter((entry) => !listing.includes(entry))
 if (missing.length > 0) {

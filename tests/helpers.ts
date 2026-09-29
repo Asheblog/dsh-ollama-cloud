@@ -27,7 +27,7 @@ export function liveConfig(overrides: {
     maxTokens: ref(32768),
     defaultContextWindow: ref(262144),
     streamIdleTimeoutMs: ref(300000),
-    webRequestTimeoutMs: ref(15000),
+    requestTimeoutMs: ref(15000),
   }
   return { config: references as unknown as Config, references }
 }

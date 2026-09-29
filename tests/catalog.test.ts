@@ -77,7 +77,10 @@ describe('DEFAULT_MODELS', () => {
       reasoningEfforts: { high: 'high' },
       defaultEffort: 'high',
     })
-    expect(byId.get('minimax-m3')?.reasoningEfforts).toEqual({ off: 'none', high: 'high' })
+    expect(byId.get('minimax-m3')).toMatchObject({
+      reasoningEfforts: { off: 'none', low: 'low', medium: 'medium', high: 'high', max: 'max' },
+    })
+    expect(byId.get('minimax-m3')?.defaultEffort).toBeUndefined()
     expect(byId.get('mistral-large-3:675b')?.reasoningEfforts).toBe(false)
     expect(byId.get('nemotron-3-super')?.contextWindow).toBe(262144)
   })
