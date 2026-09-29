@@ -1,6 +1,10 @@
 /**
  * Ollama Cloud account usage behind the `usage/read` RPC endpoint.
  *
+ * The internal snapshot this module decodes is projected onto the browser's
+ * wire shape (`WireUsageSnapshot`, windows keyed by id) in `rpc.ts`, which is
+ * what the ecosystem's Ollama usage readers already decode.
+ *
  * `GET <native base>/usage` reports, per billing window, the consumed fraction
  * of the account's allowance plus the request counts of the models that spent
  * it. That endpoint is cloud-only: a local Ollama server answers 404, which is
@@ -24,6 +28,13 @@ export const USAGE_MAX_BYTES = 1048576
 
 /** Default per-attempt budget for a usage read, matching the other non-chat requests. */
 export const DEFAULT_USAGE_TIMEOUT_MS = 15000
+
+/**
+ * Below this magnitude an epoch number is read as seconds rather than
+ * milliseconds (`0xe8d4a51000` is 1e12, and every millisecond instant for a
+ * plausible date exceeds it while every second instant is far below).
+ */
+const MILLISECOND_EPOCH_FLOOR = 0xe8d4a51000
 
 /** The endpoint has no usage surface (a local or self-hosted server). */
 export const USAGE_UNSUPPORTED = 'OLLAMA_USAGE_UNSUPPORTED'
@@ -90,7 +101,7 @@ function readResetInstant(window: Record<string, unknown>, now: number): string 
   } else if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
     // Epoch seconds and milliseconds are told apart by magnitude: a
     // millisecond instant for any plausible date exceeds the second range.
-    const milliseconds = raw < 0xe8d4a51000 ? raw * 1000 : raw
+    const milliseconds = raw < MILLISECOND_EPOCH_FLOOR ? raw * 1000 : raw
     return new Date(milliseconds).toISOString()
   }
   const after = window.reset_after_seconds ?? window.resetAfterSeconds

@@ -1,6 +1,10 @@
 /**
  * Ollama Cloud account usage behind the `usage/read` RPC endpoint.
  *
+ * The internal snapshot this module decodes is projected onto the browser's
+ * wire shape (`WireUsageSnapshot`, windows keyed by id) in `rpc.ts`, which is
+ * what the ecosystem's Ollama usage readers already decode.
+ *
  * `GET <native base>/usage` reports, per billing window, the consumed fraction
  * of the account's allowance plus the request counts of the models that spent
  * it. That endpoint is cloud-only: a local Ollama server answers 404, which is

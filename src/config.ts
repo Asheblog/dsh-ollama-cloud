@@ -22,6 +22,9 @@ import { GENERIC_EFFORTS, pinEfforts, THINKING_LEVELS, type PinnedEfforts, type 
 /** Provider route this plugin registers. */
 export const PROVIDER = 'ollama-cloud'
 
+/** Plugin name: the loader row id, the settings namespace, and the diagnosis prefix. */
+export const PLUGIN_NAME = 'llm-ollama-cloud'
+
 /** Native API base the plugin talks to by default. */
 export const DEFAULT_BASE_URL = 'https://ollama.com/api'
 

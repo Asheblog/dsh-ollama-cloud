@@ -23,6 +23,7 @@ import { OllamaCloudAdapter } from './adapter.js'
 import {
   createConnectionReader,
   DISPLAY_NAME,
+  PLUGIN_NAME,
   PROVIDER,
   type Config as ConfigShape,
   type ConnectionOptions,
@@ -62,7 +63,15 @@ export {
   USAGE_ENDPOINT,
   USAGE_RPC_CHANNEL,
 } from './rpc.js'
-export type { CredentialSetValue, CredentialStatusValue, UsageReadValue, UsageRpcHandler } from './rpc.js'
+export type {
+  CredentialSetValue,
+  CredentialStatusValue,
+  UsageReadValue,
+  UsageRpcHandler,
+  WireUsageSnapshot,
+  WireUsageWindow,
+} from './rpc.js'
+export { toWireUsage } from './rpc.js'
 export {
   decodeUsageResponse,
   readUsage,
@@ -78,13 +87,13 @@ export { createOllamaCloudAuth, createPiAiProfile, toPiAiModel } from './profile
 export { MAX_SEARCH_RESULTS, OLLAMA_WEB_PROVIDER_ID, OllamaWebFetchProvider, OllamaWebSearchProvider } from './web.js'
 
 /** Loader row name; also the plugin's settings namespace fallback. */
-export const name = 'llm-ollama-cloud'
+export const name = PLUGIN_NAME
 
 /** The route lives on the LLM seam. */
 export const inject = ['llm']
 
 /** Default settings namespace when the loader does not supply an entry id. */
-export const DEFAULT_SETTINGS_NAMESPACE = 'llm-ollama-cloud'
+export const DEFAULT_SETTINGS_NAMESPACE = PLUGIN_NAME
 
 /**
  * Build the credential resolution a chat request needs.
@@ -186,10 +195,20 @@ export function apply(ctx: Context, config: ConfigShape): void {
       fetch,
       attribution: attributionHeaders,
     })
-    connectionCtx.effect(
-      () => connectionCtx.connection.rpc.handle(USAGE_RPC_CHANNEL, handler),
-      'llm-ollama-cloud: usage RPC channel',
-    )
+    connectionCtx.effect(() => {
+      try {
+        return connectionCtx.connection.rpc.handle(USAGE_RPC_CHANNEL, handler)
+      } catch (error) {
+        // Loud instead of silent: the browser card then reports a restart hint,
+        // and this line names the composition change that fixes it.
+        ctx.logger.warn(
+          'llm-ollama-cloud: the usage channel could not mount on the connection service;'
+          + ' the connection row needs `webServer` in its inject (this bundle patch adds it)',
+        )
+        ctx.logger.warn(error)
+        return () => {}
+      }
+    }, 'llm-ollama-cloud: usage RPC channel')
   })
 
   // Optional capability: a headless composition without the web seam simply

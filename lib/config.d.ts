@@ -16,6 +16,8 @@ import z from '@deepseek-ai/schemastery';
 import { type PinnedEfforts, type ThinkingLevel } from './reasoning.js';
 /** Provider route this plugin registers. */
 export declare const PROVIDER = "ollama-cloud";
+/** Plugin name: the loader row id, the settings namespace, and the diagnosis prefix. */
+export declare const PLUGIN_NAME = "llm-ollama-cloud";
 /** Native API base the plugin talks to by default. */
 export declare const DEFAULT_BASE_URL = "https://ollama.com/api";
 /** Display name for selectors; also the profile's display name. */

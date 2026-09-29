@@ -5,9 +5,10 @@
  * here: `usage/read` resolves the route's credential per call, `credential/set`
  * writes a new one through the harness credentials seam, and
  * `credential/status` answers presence and writability without the value. The
- * channel name, endpoint names, and reply envelopes match what the ecosystem's
- * Ollama provider UIs already call (`/ollama-cloud` + `usage/read`), so an
- * installed provider UI reads this plugin's usage without knowing about it.
+ * channel and endpoint names follow the convention the ecosystem's Ollama
+ * provider plugins used (`/ollama-cloud` + `usage/read`), which keeps one
+ * vocabulary across them; the channel is this plugin's own, so no other plugin
+ * has to exist for the card to work.
  *
  * A failure reply never carries the secret, and the reference a write targets
  * is the configured one — a client cannot redirect a write to another seam
@@ -16,9 +17,9 @@
  * @module dsh-ollama-cloud/rpc
  */
 import { type CredentialProvider } from '@deepseek-ai/dsh-credentials';
-import type { ConnectionOptions } from './config.js';
+import { type ConnectionOptions } from './config.js';
 import type { ResolveCredential } from './credentials.js';
-import { type OllamaUsageSnapshot } from './usage.js';
+import { type OllamaUsageModelCount, type OllamaUsageSnapshot } from './usage.js';
 /** Channel the browser half registers and calls under. */
 export declare const USAGE_RPC_CHANNEL = "/ollama-cloud";
 /** Read one usage snapshot. */
@@ -47,10 +48,42 @@ export interface RpcSuccess<T> {
 }
 /** One RPC reply. */
 export type RpcReply<T> = RpcSuccess<T> | RpcFailure;
+/** One window in the wire shape the ecosystem's Ollama usage readers decode. */
+export interface WireUsageWindow {
+    /** Consumed fraction of the allowance. */
+    readonly usage: number;
+    /** Models that spent the window. */
+    readonly models: readonly OllamaUsageModelCount[];
+    /** Absolute instant the window resets, when the endpoint disclosed one. */
+    readonly resetsAt?: string;
+}
+/**
+ * Wire shape of one usage snapshot: windows keyed by id.
+ *
+ * Provider UIs built for the ecosystem's Ollama plugin decode exactly this
+ * (`fetchedAt` plus optional `session`/`weekly`/`monthly` objects), so the
+ * channel serves it verbatim rather than this plugin's internal list form.
+ */
+export interface WireUsageSnapshot {
+    /** When the host read the endpoint. */
+    readonly fetchedAt: string;
+    /** Rolling session window, when reported. */
+    readonly session?: WireUsageWindow;
+    /** Rolling weekly window, when reported. */
+    readonly weekly?: WireUsageWindow;
+    /** Monthly window, when reported. */
+    readonly monthly?: WireUsageWindow;
+}
+/**
+ * Project one internal snapshot onto the wire shape.
+ * @param snapshot - decoded snapshot.
+ * @returns the windows keyed by id.
+ */
+export declare function toWireUsage(snapshot: OllamaUsageSnapshot): WireUsageSnapshot;
 /** `usage/read` value: a snapshot, or the endpoint has no usage surface. */
 export type UsageReadValue = {
     readonly status: 'ok';
-    readonly usage: OllamaUsageSnapshot;
+    readonly usage: WireUsageSnapshot;
 } | {
     readonly status: 'unsupported';
 };

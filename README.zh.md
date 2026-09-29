@@ -145,7 +145,7 @@ Ollama 会下架云端模型（被下架的模型返回 HTTP 410）。本插件�
 - 验证目标：DSH `0.2.0-rc.1`（`@deepseek-ai/dsh-*` 的 peer 范围是 `>=0.2.0-rc.1`，无上界；官方新版本若出现回归会记入 `dsh.compatibility.blocklist`）。
 - 运行依赖：`@earendil-works/pi-ai`（与 Harness 自身的 `dsh-llm-pi-ai` 同源）。
 - 协议解析、流式转换、回放与工具调用全部委托官方 `@deepseek-ai/dsh-llm-pi-ai` 的 `PiAiAdapter`，本插件只提供 Ollama 特有的连接事实、模型目录与档位元数据。设计依据见 [ADR 0001](docs/adr/0001-delegate-chat-to-official-pi-ai-adapter.zh.md)。
-- 浏览器半侧只占用宿主槽位（`settings.models.provider-card`、`sidebar.footer.action`）并使用宿主主题 token，不依赖任何其它客户端包。其 RPC 通道（`/ollama-cloud` + `usage/read`）与生态里既有 Ollama 供应商 UI 调用的完全一致，因此那些 UI 也能直接读到本插件的用量。
+- 浏览器半侧只占用宿主槽位（`settings.models.provider-card`、`sidebar.footer.action`）、使用宿主主题 token，并在 `inject` 里声明 `connection`；不依赖任何其它客户端包——用量通道（`/ollama-cloud` + `usage/read`）是本插件自己的，因此不需要任何供应商 UI 壳插件存在。
 - 已知限制：Ollama 的 OpenAI 兼容面不支持 `tool_choice`、`logprobs`，也不提供 prompt cache 统计；用量字段以它实际返回的为准。
 
 ## 开发

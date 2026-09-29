@@ -81,7 +81,15 @@ describe('usage RPC registration', () => {
       ok: true,
       value: { reference: 'OLLAMA_API_KEY', configured: true },
     })
+
     vi.unstubAllGlobals()
+  })
+
+  it('warns instead of failing when the composition refuses the channel', () => {
+    const { ctx, captured } = fakeContext({ connectionHandleThrows: true })
+    expect(() => apply(ctx, liveConfig().config)).not.toThrow()
+    expect(captured.rpc).toEqual([])
+    expect(ctx.logger.warn).toHaveBeenCalledWith(expect.stringMatching(/usage channel could not mount/u))
   })
 
   it('skips the channel in a composition without a browser session', () => {

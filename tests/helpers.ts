@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs'
+
 import type { Context, Volatile } from '@deepseek-ai/cordis'
+import * as React from 'react'
 import { vi } from 'vitest'
 
 import type { Config, ConfiguredModelEntry } from '../src/config.js'
@@ -62,6 +65,8 @@ export function fakeContext(options: {
   entryId?: string | undefined
   includeWeb?: boolean
   includeConnection?: boolean
+  /** Simulate a connection service whose channel registration throws. */
+  connectionHandleThrows?: boolean
 } = {}) {
   const captured: CapturedRegistrations = {
     adapters: [],
@@ -91,6 +96,9 @@ export function fakeContext(options: {
     connection: {
       rpc: {
         handle: (channel: string, handler: unknown) => {
+          if (options.connectionHandleThrows === true) {
+            throw new Error('cannot get property "webServer" without inject')
+          }
           captured.rpc.push({ channel, handler })
           return () => Promise.resolve()
         },
@@ -127,4 +135,123 @@ export function fakeContext(options: {
     },
   }
   return { ctx: ctx as unknown as Context, captured }
+}
+
+/** One seat registration captured from a fake slots service. */
+export interface CapturedSeat {
+  options: Record<string, unknown>
+  component: (props: Record<string, unknown>) => React.ReactElement
+}
+
+/** The bundle's shape as far as these tests reach into it. */
+export interface ClientBundle {
+  name: string
+  inject: string[]
+  apply: (ctx: unknown) => void
+  internals: {
+    COPY: { en: Record<string, string>; zh: Record<string, string> }
+    store: { read(rpc: unknown, options?: { force?: boolean }): Promise<unknown> }
+    decodeUsageReply: (value: unknown) => unknown
+    failureText: (state: Record<string, unknown>, t: Translate) => string
+    formatClock: (iso: string) => string | undefined
+    isNeedsRestart: (message: unknown) => boolean
+    primaryWindow: (windows: Array<{ id: string }>) => { id: string } | undefined
+    remainingPercent: (used: number) => number
+    resetLabelOf: (window: Record<string, unknown>, t: Translate) => string | undefined
+    severityOf: (remaining: number) => string
+    windowCopyKey: (id: string) => string
+  }
+}
+
+export type Translate = (key: string, params?: Record<string, string>) => string
+
+/**
+ * Load the hand-written browser bundle the way the host loader does: hand it a
+ * `window.__ModuleLoader__` to register into, then materialize the factory with
+ * a `require` that answers what the loader's baseline answers.
+ */
+export function loadBundle(): { id: string; module: ClientBundle } {
+  const source = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let registration: { id: string; factory: (require: (id: string) => unknown) => unknown } | undefined
+  const fakeWindow = {
+    __ModuleLoader__: {
+      load: (value: typeof registration) => {
+        registration = value
+      },
+    },
+  }
+  new Function('window', source)(fakeWindow)
+  if (registration === undefined) throw new Error('bundle never registered')
+  const module = registration.factory((id: string) => {
+    if (id === 'react') return React
+    throw new Error(`unexpected require("${id}")`)
+  }) as ClientBundle
+  return { id: registration.id, module }
+}
+
+
+/**
+ * A translator bound to one bundle instance's own English dictionary, with the
+ * bundle's own `{name}` interpolation.
+ */
+export function translatorFor(module: ClientBundle): Translate {
+  const dictionary = module.internals.COPY.en
+  return (key, params) => {
+    const template = dictionary[key] ?? key
+    return params === undefined
+      ? template
+      : template.replace(/\{(\w+)\}/gu, (_match, name: string) => params[name] ?? '')
+  }
+}
+
+/** One mounted client instance: what it registered and the seats it left behind. */
+export interface ClientMount {
+  seats: CapturedSeat[]
+  registered: string[]
+  styles: string[]
+}
+
+/**
+ * Mount one bundle instance against a fake client context, with `rpc` reachable
+ * through the connection service and the stylesheet host stubbed.
+ */
+export function mountClient(module: ClientBundle, rpc: unknown, t: Translate): ClientMount {
+  const seats: CapturedSeat[] = []
+  const registered: string[] = []
+  const styles: string[] = []
+  vi.stubGlobal('document', {
+    head: { appendChild: (element: { id: string }) => styles.push(element.id) },
+    createElement: () => ({ id: '', textContent: '', remove: () => {} }),
+  })
+  module.apply({
+    effect: (callback: () => unknown) => callback(),
+    locale: { register: () => () => {}, bind: () => t },
+    get: () => ({ rpc }),
+    slots: {
+      inject: (name: string, callback: () => unknown) => {
+        registered.push(name)
+        callback()
+      },
+      register: (options: Record<string, unknown>, component: CapturedSeat['component']) => {
+        seats.push({ options, component })
+        return () => {}
+      },
+    },
+  })
+  vi.unstubAllGlobals()
+  return { seats, registered, styles }
+}
+
+/** The card seat's component, or a failure naming the missing registration. */
+export function cardSeat(mount: ClientMount): CapturedSeat['component'] {
+  const seat = mount.seats.find((candidate) => candidate.options.key !== undefined)
+  if (seat === undefined) throw new Error('card seat was not registered')
+  return seat.component
+}
+
+/** The sidebar seat's component, or a failure naming the missing registration. */
+export function sidebarSeat(mount: ClientMount): CapturedSeat['component'] {
+  const seat = mount.seats.find((candidate) => candidate.options.id !== undefined)
+  if (seat === undefined) throw new Error('sidebar seat was not registered')
+  return seat.component
 }

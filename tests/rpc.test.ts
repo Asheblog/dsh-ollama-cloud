@@ -50,8 +50,14 @@ describe('usage/read', () => {
     expect(reply).toMatchObject({ ok: true, value: { status: 'ok' } })
     expect(calls[0]?.url).toBe('https://ollama.com/api/usage')
     expect(calls[0]?.init?.headers).toMatchObject({ authorization: 'Bearer stored-key' })
-    const usage = (reply as { value: { usage: { windows: Array<{ id: string }> } } }).value.usage
-    expect(usage.windows.map((window) => window.id)).toEqual(['monthly'])
+    // The channel serves the shape the ecosystem's Ollama usage readers decode.
+    expect((reply as { value: unknown }).value).toEqual({
+      status: 'ok',
+      usage: {
+        fetchedAt: expect.any(String),
+        monthly: { usage: 0.5, models: [{ name: 'web search', requestCount: 2 }] },
+      },
+    })
   })
 
   it('honors a draft endpoint and one-shot key from a configuration surface', async () => {

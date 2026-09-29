@@ -158,7 +158,7 @@ Both share the route's credential reference and `baseURL`. Requests carry the cr
 - Verified against DSH `0.2.0-rc.1` (peers are `>=0.2.0-rc.1` with no upper bound; a future regression is recorded in `dsh.compatibility.blocklist`).
 - Runtime dependency: `@earendil-works/pi-ai` (the same library the harness's own `dsh-llm-pi-ai` uses).
 - Protocol translation, streaming, replay, and tool calls are delegated wholesale to the official `@deepseek-ai/dsh-llm-pi-ai` `PiAiAdapter`; this plugin contributes Ollama-specific connection facts, the model catalog, and level metadata. Rationale: [ADR 0001](docs/adr/0001-delegate-chat-to-official-pi-ai-adapter.md).
-- The browser half renders only in host slots (`settings.models.provider-card`, `sidebar.footer.action`) with host theme tokens; it requires no other client package. Its RPC channel (`/ollama-cloud` + `usage/read`) matches what the ecosystem's Ollama provider UIs already call, so one of those reads this plugin's usage too.
+- The browser half renders only in host slots (`settings.models.provider-card`, `sidebar.footer.action`) with host theme tokens, declares `connection` in its `inject`, and requires no other client package: the usage channel (`/ollama-cloud` + `usage/read`) is the plugin's own, so no provider-UI shell has to exist for the card to work.
 - Known limits: Ollama's OpenAI-compatible surface supports neither `tool_choice` nor `logprobs`, and reports no prompt-cache statistics; usage is whatever it actually returns.
 
 ## Development

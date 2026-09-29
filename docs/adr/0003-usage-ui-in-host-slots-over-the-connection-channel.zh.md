@@ -18,8 +18,13 @@
 - **带凭据的读取全部留在宿主侧。** 浏览器半侧只调用本插件自己的连接通道
   （`/ollama-cloud`，端点 `usage/read`、`credential/status`、`credential/set`），
   永远拿不到密钥；写入走 Harness 凭据 seam，且目标引用是配置里的那一个，
-  而不是客户端报上来的名字。通道与端点名刻意与生态里既有 Ollama 供应商 UI 调用的完全一致，
-  因此那些 UI 无需改动即可读到本插件的用量。
+  而不是客户端报上来的名字。通道与端点名沿用生态里 Ollama 插件的惯例
+  （`/ollama-cloud` + `usage/read`），让词汇保持一致；通道是本插件自己的，
+  不需要任何供应商 UI 壳存在才能提供服务。
+
+  旧的共享通道路子（`/api` + `plugin-rpc/<channel>`）**不提供服务**：
+  在 DSH 0.2.0-rc.1 上这条路径无人应答——拦截器收不到它，请求直接落到 Web 服务器的 404——
+  因此声称兼容基于它的 reader 会是虚假陈述。
 - **由 bundle patch 修复 connection 行。** `connection.rpc.handle()` 是通过该服务自己的
   `webServer` 挂通道的，而 web-app bundle 只给这一行声明了 `inject: [webRuntime]`，
   于是注册抛错、通道挂不上。patch 必须整段重述 `inject`（`[webRuntime, webServer]`），

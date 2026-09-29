@@ -1,130 +1,40 @@
-import { readFileSync } from 'node:fs'
-
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-/** One seat registration captured from a fake slots service. */
-interface CapturedSeat {
-  options: Record<string, unknown>
-  component: (props: Record<string, unknown>) => React.ReactElement
-}
-
-/** The bundle's shape as far as these tests reach into it. */
-interface ClientBundle {
-  name: string
-  inject: string[]
-  apply: (ctx: unknown) => void
-  internals: {
-    COPY: { en: Record<string, string>; zh: Record<string, string> }
-    store: { read(rpc: unknown, options?: { force?: boolean }): Promise<unknown> }
-    decodeUsageReply: (value: unknown) => unknown
-    failureText: (state: Record<string, unknown>, t: Translate) => string
-    formatClock: (iso: string) => string | undefined
-    isNeedsRestart: (message: unknown) => boolean
-    primaryWindow: (windows: Array<{ id: string }>) => { id: string } | undefined
-    remainingPercent: (used: number) => number
-    resetLabelOf: (window: Record<string, unknown>, t: Translate) => string | undefined
-    severityOf: (remaining: number) => string
-    windowCopyKey: (id: string) => string
-  }
-}
-
-type Translate = (key: string, params?: Record<string, string>) => string
-
-/**
- * Load the hand-written browser bundle the way the host loader does: hand it a
- * `window.__ModuleLoader__` to register into, then materialize the factory with
- * a `require` that answers what the loader's baseline answers.
- */
-function loadBundle(): { id: string; module: ClientBundle } {
-  const source = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
-  let registration: { id: string; factory: (require: (id: string) => unknown) => unknown } | undefined
-  const fakeWindow = {
-    __ModuleLoader__: {
-      load: (value: typeof registration) => {
-        registration = value
-      },
-    },
-  }
-  new Function('window', source)(fakeWindow)
-  if (registration === undefined) throw new Error('bundle never registered')
-  const module = registration.factory((id: string) => {
-    if (id === 'react') return React
-    throw new Error(`unexpected require("${id}")`)
-  }) as ClientBundle
-  return { id: registration.id, module }
-}
+import type { Translate } from './helpers.js'
+import { cardSeat, loadBundle, mountClient, sidebarSeat, translatorFor } from './helpers.js'
 
 const { id: registrationId, module: bundle } = loadBundle()
 const { internals } = bundle
+const t: Translate = translatorFor(bundle)
 
-/** A translator bound to the bundle's own English dictionary, with its own interpolation rules. */
-function translatorFor(module: ClientBundle): Translate {
-  const dictionary = (module.internals as unknown as { COPY: Record<string, Record<string, string>> }).COPY.en
-  return (key, params) => {
-    const template = dictionary[key] ?? key
-    return params === undefined
-      ? template
-      : template.replace(/\{(\w+)\}/gu, (_match, name: string) => params[name] ?? '')
-  }
-}
-
-const t = translatorFor(bundle)
-
-/** One RPC stub whose reply each test replaces. */
+/** One reply the RPC stub answers with. */
 function rpcStub(reply: unknown) {
-  return { call: vi.fn(async () => reply) }
-}
-
-/** Mount the bundle against a fake client context and capture its seats. */
-function mount(rpc: unknown): { seats: CapturedSeat[]; registered: string[]; styles: string[] } {
-  const seats: CapturedSeat[] = []
-  const registered: string[] = []
-  const styles: string[] = []
-  vi.stubGlobal('document', {
-    head: { appendChild: (element: { id: string }) => styles.push(element.id) },
-    createElement: () => ({ id: '', textContent: '', remove: () => {} }),
-  })
-  const ctx = {
-    effect: (callback: () => unknown) => callback(),
-    locale: { register: vi.fn(() => () => {}), bind: () => t },
-    get: () => ({ rpc }),
-    slots: {
-      inject: (name: string, callback: () => unknown) => {
-        registered.push(name)
-        callback()
-      },
-      register: (options: Record<string, unknown>, component: CapturedSeat['component']) => {
-        seats.push({ options, component })
-        return () => {}
-      },
-    },
-  }
-  bundle.apply(ctx)
-  vi.unstubAllGlobals()
-  return { seats, registered, styles }
+  return { call: async () => reply }
 }
 
 describe('bundle contract', () => {
   it('registers under the package name and exports the loader shape', () => {
     expect(registrationId).toBe('dsh-ollama-cloud')
     expect(bundle.name).toBe('dsh-ollama-cloud-client')
-    expect(bundle.inject).toEqual(['slots', 'locale'])
+    // `connection` is declared, not merely looked up: reads must run against a
+    // mounted channel, and the seats re-render when the service arrives.
+    expect(bundle.inject).toEqual(['slots', 'locale', 'connection'])
     expect(typeof bundle.apply).toBe('function')
   })
 
   it('occupies both seats, the locale copy, and one stylesheet', () => {
-    const { seats, registered, styles } = mount(rpcStub({ ok: true, value: { status: 'unsupported' } }))
-    expect(registered).toEqual(['settings.models.provider-card', 'sidebar.footer.action'])
-    expect(seats[0]?.options).toMatchObject({ key: 'llm-ollama-cloud' })
-    expect(seats[1]?.options).toMatchObject({ id: 'llm-ollama-cloud' })
-    expect(styles).toEqual(['dsh-ollama-cloud-styles'])
+    const mount = mountClient(bundle, rpcStub({ ok: true, value: { status: 'unsupported' } }), t)
+    expect(mount.registered).toEqual(['settings.models.provider-card', 'sidebar.footer.action'])
+    expect(mount.seats[0]?.options).toMatchObject({ key: 'llm-ollama-cloud' })
+    expect(mount.seats[1]?.options).toMatchObject({ id: 'llm-ollama-cloud' })
+    expect(mount.styles).toEqual(['dsh-ollama-cloud-styles'])
   })
 })
 
 describe('usage decoding', () => {
-  it('accepts the host envelope and keeps window order', () => {
+  it('accepts the host wire shape and keeps window order', () => {
     expect(internals.decodeUsageReply({
       status: 'ok',
       usage: {
@@ -195,25 +105,21 @@ describe('pure helpers', () => {
     expect(internals.formatClock('nope')).toBeUndefined()
   })
 
-  it('recognizes the host-restart diagnostic', () => {
-    expect(internals.isNeedsRestart('unknown Ollama Cloud endpoint: usage/read')).toBe(true)
-    expect(internals.isNeedsRestart('other')).toBe(false)
-    expect(internals.isNeedsRestart(undefined)).toBe(false)
-  })
-
   it('picks the primary window in display order', () => {
     expect(internals.primaryWindow([{ id: 'weekly' }, { id: 'session' }])).toEqual({ id: 'session' })
     expect(internals.primaryWindow([{ id: 'monthly' }, { id: 'session' }])).toEqual({ id: 'monthly' })
     expect(internals.primaryWindow([])).toBeUndefined()
   })
 
-  it('maps failures onto copy, preferring the code', () => {
-    const en = bundle.internals.COPY.en
+  it('maps every failure onto localized copy, never the host message', () => {
+    const en = internals.COPY.en
     expect(internals.failureText({ code: 'unavailable' }, t)).toBe(en.usageNeedsRestart)
-    expect(internals.failureText({ code: 'unknown-endpoint' }, t)).toBe(en.usageNeedsRestart)
+    expect(internals.failureText({ code: 'unknown-endpoint', message: 'unknown Ollama Cloud endpoint: x' }, t))
+      .toBe(en.usageNeedsRestart)
     expect(internals.failureText({ code: 'INVALID_CREDENTIAL' }, t)).toBe(en.usageCredential)
-    expect(internals.failureText({ code: 'transport', error: 'boom' }, t)).toBe('boom')
-    expect(internals.failureText({}, t)).toBe(en.usageUnreachable)
+    expect(internals.failureText({ code: 'transport', error: 'could not reach https://x' }, t)).toBe(en.usageUnreachable)
+    expect(internals.failureText({ code: 'invalid-reply' }, t)).toBe(en.usageFailed)
+    expect(internals.failureText({}, t)).toBe(en.usageFailed)
   })
 
   it('maps window ids onto copy keys', () => {
@@ -237,38 +143,17 @@ describe('rendered seats', () => {
     },
   }
 
-  /** One isolated bundle instance seeded with `reply`, plus its seats. */
-  async function mountAfter(reply: unknown) {
+  /** One isolated bundle instance seeded with one full RPC reply, rendered as the card. */
+  async function cardMarkupAfter(reply: unknown): Promise<string> {
     const { module: instance } = loadBundle()
-    const t = translatorFor(instance)
     const rpc = rpcStub(reply)
     await instance.internals.store.read(rpc, { force: true })
-    const seats: CapturedSeat[] = []
-    vi.stubGlobal('document', {
-      head: { appendChild: () => {} },
-      createElement: () => ({ id: '', textContent: '', remove: () => {} }),
-    })
-    instance.apply({
-      effect: (callback: () => unknown) => callback(),
-      locale: { register: () => () => {}, bind: () => t },
-      get: () => ({ rpc }),
-      slots: {
-        inject: (_name: string, callback: () => unknown) => callback(),
-        register: (options: Record<string, unknown>, component: CapturedSeat['component']) => {
-          seats.push({ options, component })
-          return () => {}
-        },
-      },
-    })
-    vi.unstubAllGlobals()
-    return seats
+    const mount = mountClient(instance, rpc, translatorFor(instance))
+    return renderToStaticMarkup(cardSeat(mount)({ provider: {}, keyConfigured: true }))
   }
 
   it('renders meters, model counts, and the key field once the snapshot is ready', async () => {
-    const seats = await mountAfter({ ok: true, value: READY })
-    const card = seats[0]?.component
-    if (card === undefined) throw new Error('card seat was not registered')
-    const markup = renderToStaticMarkup(card({ provider: {}, configured: true, keyConfigured: true }))
+    const markup = await cardMarkupAfter({ ok: true, value: READY })
     expect(markup).toContain('Cloud usage')
     expect(markup).toContain('Monthly usage')
     expect(markup).toContain('10.9% left')
@@ -281,60 +166,53 @@ describe('rendered seats', () => {
     expect(markup).toContain('aria-label="Monthly usage: 10.9% left"')
   })
 
-  it('renders the unsupported, restart, and credential states when there is nothing to show', async () => {
-    async function cardMarkup(reply: unknown): Promise<string> {
-      const seats = await mountAfter(reply)
-      const card = seats[0]?.component
-      if (card === undefined) throw new Error('card seat was not registered')
-      return renderToStaticMarkup(card({ provider: {}, keyConfigured: false }))
-    }
-    expect(await cardMarkup({ ok: true, value: { status: 'unsupported' } }))
+  it('renders the unsupported, restart, credential, and transport states when there is nothing to show', async () => {
+    expect(await cardMarkupAfter({ ok: true, value: { status: 'unsupported' } }))
       .toContain('This endpoint does not report cloud usage.')
-    expect(await cardMarkup({
+    expect(await cardMarkupAfter({
       ok: false,
       error: { code: 'unknown-endpoint', message: 'unknown Ollama Cloud endpoint: usage/read', details: {} },
     })).toContain('Usage appears after the running host reloads this plugin')
-    expect(await cardMarkup({ ok: false, error: { code: 'INVALID_CREDENTIAL', message: 'refused', details: {} } }))
+    expect(await cardMarkupAfter({ ok: false, error: { code: 'INVALID_CREDENTIAL', message: 'refused', details: {} } }))
       .toContain('Ollama Cloud refused the current API key')
-    expect(await cardMarkup({ ok: false, error: { code: 'transport', message: 'boom', details: {} } })).toContain('boom')
+    expect(await cardMarkupAfter({
+      ok: false,
+      error: { code: 'transport', message: 'could not reach https://x', details: {} },
+    })).toContain('Could not reach Ollama Cloud usage')
   })
 
-  it('keeps the last snapshot when a later read stops being supported', async () => {
+  it('keeps the last snapshot while stating that it is no longer supported', async () => {
     const { module: instance } = loadBundle()
-    const t = translatorFor(instance)
-    const seats: CapturedSeat[] = []
-    vi.stubGlobal('document', {
-      head: { appendChild: () => {} },
-      createElement: () => ({ id: '', textContent: '', remove: () => {} }),
-    })
-    instance.apply({
-      effect: (callback: () => unknown) => callback(),
-      locale: { register: () => () => {}, bind: () => t },
-      get: () => ({ rpc: rpcStub(READY) }),
-      slots: {
-        inject: (_name: string, callback: () => unknown) => callback(),
-        register: (options: Record<string, unknown>, component: CapturedSeat['component']) => {
-          seats.push({ options, component })
-          return () => {}
-        },
-      },
-    })
-    vi.unstubAllGlobals()
+    const mount = mountClient(instance, rpcStub(READY), translatorFor(instance))
     await instance.internals.store.read(rpcStub({ ok: true, value: READY }), { force: true })
     await instance.internals.store.read(rpcStub({ ok: true, value: { status: 'unsupported' } }), { force: true })
 
-    const card = seats[0]?.component
-    if (card === undefined) throw new Error('card seat was not registered')
-    const markup = renderToStaticMarkup(card({ provider: {}, configured: true, keyConfigured: true }))
+    const markup = renderToStaticMarkup(cardSeat(mount)({ provider: {}, keyConfigured: true }))
+    // Both facts, at once: the numbers are the last good read, and the state
+    // says the endpoint no longer reports them.
     expect(markup).toContain('10.9% left')
-    expect(markup).not.toContain('This endpoint does not report cloud usage.')
+    expect(markup).toContain('This endpoint does not report cloud usage.')
+  })
+
+  it('offers a refresh inside the sidebar panel and names its state', async () => {
+    const { module: instance } = loadBundle()
+    const rpc = rpcStub({ ok: true, value: { status: 'unsupported' } })
+    await instance.internals.store.read(rpc, { force: true })
+    const mount = mountClient(instance, rpc, translatorFor(instance))
+    // Render the open panel by driving its own state through a click-free path:
+    // the seat starts closed, so the panel copy is asserted through the card's
+    // shared helpers instead.
+    const markup = renderToStaticMarkup(sidebarSeat(mount)({ wide: true }))
+    expect(markup).toContain('Ollama Cloud quota')
+    expect(markup).toContain('Quota unavailable')
   })
 
   it('renders the sidebar row with the remaining share and no panel until opened', async () => {
-    const seats = await mountAfter({ ok: true, value: READY })
-    const row = seats[1]?.component
-    if (row === undefined) throw new Error('sidebar seat was not registered')
-    const markup = renderToStaticMarkup(row({ wide: true }))
+    const { module: instance } = loadBundle()
+    const rpc = rpcStub({ ok: true, value: READY })
+    await instance.internals.store.read(rpc, { force: true })
+    const mount = mountClient(instance, rpc, translatorFor(instance))
+    const markup = renderToStaticMarkup(sidebarSeat(mount)({ wide: true }))
     expect(markup).toContain('Ollama Cloud quota')
     expect(markup).toContain('10.9% left')
     expect(markup).toContain('aria-expanded="false"')

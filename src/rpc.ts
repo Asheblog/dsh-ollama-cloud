@@ -5,9 +5,10 @@
  * here: `usage/read` resolves the route's credential per call, `credential/set`
  * writes a new one through the harness credentials seam, and
  * `credential/status` answers presence and writability without the value. The
- * channel name, endpoint names, and reply envelopes match what the ecosystem's
- * Ollama provider UIs already call (`/ollama-cloud` + `usage/read`), so an
- * installed provider UI reads this plugin's usage without knowing about it.
+ * channel and endpoint names follow the convention the ecosystem's Ollama
+ * provider plugins used (`/ollama-cloud` + `usage/read`), which keeps one
+ * vocabulary across them; the channel is this plugin's own, so no other plugin
+ * has to exist for the card to work.
  *
  * A failure reply never carries the secret, and the reference a write targets
  * is the configured one — a client cannot redirect a write to another seam
@@ -19,10 +20,16 @@
 import { credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import { assertUsableApiKey } from '@deepseek-ai/dsh-llm'
 
-import type { ConnectionOptions } from './config.js'
+import { PLUGIN_NAME, type ConnectionOptions } from './config.js'
 import type { ResolveCredential } from './credentials.js'
 import { nativeBaseFrom } from './discovery.js'
-import { readUsage, USAGE_UNSUPPORTED, UsageError, type OllamaUsageSnapshot } from './usage.js'
+import {
+  readUsage,
+  USAGE_UNSUPPORTED,
+  UsageError,
+  type OllamaUsageModelCount,
+  type OllamaUsageSnapshot,
+} from './usage.js'
 
 /** Channel the browser half registers and calls under. */
 export const USAGE_RPC_CHANNEL = '/ollama-cloud'
@@ -59,9 +66,54 @@ export interface RpcSuccess<T> {
 /** One RPC reply. */
 export type RpcReply<T> = RpcSuccess<T> | RpcFailure
 
+/** One window in the wire shape the ecosystem's Ollama usage readers decode. */
+export interface WireUsageWindow {
+  /** Consumed fraction of the allowance. */
+  readonly usage: number
+  /** Models that spent the window. */
+  readonly models: readonly OllamaUsageModelCount[]
+  /** Absolute instant the window resets, when the endpoint disclosed one. */
+  readonly resetsAt?: string
+}
+
+/**
+ * Wire shape of one usage snapshot: windows keyed by id.
+ *
+ * Provider UIs built for the ecosystem's Ollama plugin decode exactly this
+ * (`fetchedAt` plus optional `session`/`weekly`/`monthly` objects), so the
+ * channel serves it verbatim rather than this plugin's internal list form.
+ */
+export interface WireUsageSnapshot {
+  /** When the host read the endpoint. */
+  readonly fetchedAt: string
+  /** Rolling session window, when reported. */
+  readonly session?: WireUsageWindow
+  /** Rolling weekly window, when reported. */
+  readonly weekly?: WireUsageWindow
+  /** Monthly window, when reported. */
+  readonly monthly?: WireUsageWindow
+}
+
+/**
+ * Project one internal snapshot onto the wire shape.
+ * @param snapshot - decoded snapshot.
+ * @returns the windows keyed by id.
+ */
+export function toWireUsage(snapshot: OllamaUsageSnapshot): WireUsageSnapshot {
+  const windows: Partial<Record<'session' | 'weekly' | 'monthly', WireUsageWindow>> = {}
+  for (const window of snapshot.windows) {
+    windows[window.id] = {
+      usage: window.usedFraction,
+      models: window.models.map((model) => ({ name: model.name, requestCount: model.requestCount })),
+      ...window.resetsAt === undefined ? {} : { resetsAt: window.resetsAt },
+    }
+  }
+  return { fetchedAt: snapshot.fetchedAt, ...windows }
+}
+
 /** `usage/read` value: a snapshot, or the endpoint has no usage surface. */
 export type UsageReadValue =
-  | { readonly status: 'ok'; readonly usage: OllamaUsageSnapshot }
+  | { readonly status: 'ok'; readonly usage: WireUsageSnapshot }
   | { readonly status: 'unsupported' }
 
 /** `credential/status` value: presence and writability, never the value. */
@@ -164,7 +216,7 @@ async function readUsageReply(
       { fetch: options.fetch, attribution: options.attribution },
       signal,
     )
-    return { ok: true, value: { status: 'ok', usage } }
+    return { ok: true, value: { status: 'ok', usage: toWireUsage(usage) } }
   } catch (error) {
     if (error instanceof UsageError && error.code === USAGE_UNSUPPORTED) {
       return { ok: true, value: { status: 'unsupported' } }
@@ -227,7 +279,7 @@ async function credentialSetReply(
   }
   let key: string
   try {
-    key = assertUsableApiKey(request.value, 'llm-ollama-cloud', reference)
+    key = assertUsableApiKey(request.value, PLUGIN_NAME, reference)
   } catch (error) {
     return failure('INVALID_CREDENTIAL', error instanceof Error ? error.message : 'the key is unusable')
   }
