@@ -2,6 +2,11 @@
 
 Status: accepted (2026-09-29)
 
+Amended by [ADR 0004](0004-pi-ai-generation-alignment.md): the route now also
+normalizes the request context at its own boundary. That is one more
+contribution than the Decision below enumerates, and it is what lets this
+delegation survive a harness running on a different pi-ai generation.
+
 ## Context
 
 Ollama Cloud speaks an OpenAI-compatible Chat Completions surface at

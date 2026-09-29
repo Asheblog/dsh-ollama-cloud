@@ -39,6 +39,7 @@ const required = [
   'package/docs/adr/0001-delegate-chat-to-official-pi-ai-adapter.md',
   'package/docs/adr/0002-route-name-and-settings-namespace.md',
   'package/docs/adr/0003-usage-ui-in-host-slots-over-the-connection-channel.md',
+  'package/docs/adr/0004-pi-ai-generation-alignment.md',
 ]
 const missing = required.filter((entry) => !listing.includes(entry))
 if (missing.length > 0) {

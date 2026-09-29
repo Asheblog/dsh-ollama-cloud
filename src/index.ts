@@ -20,6 +20,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import { attributionHeaders, LlmError, type LlmDiscoveredModel, type LlmModelDiscoveryRequest } from '@deepseek-ai/dsh-llm'
 
 import { OllamaCloudAdapter } from './adapter.js'
+import { reportAlignment } from './alignment.js'
 import {
   createConnectionReader,
   DISPLAY_NAME,
@@ -137,6 +138,12 @@ export function apply(ctx: Context, config: ConfigShape): void {
   // Resolve once at mount so an unusable row config fails loudly instead of
   // surfacing as a request-time error nobody attributes to configuration.
   connection()
+
+  // The route streams through this package's own pi-ai while the harness that
+  // drives it belongs to the app, so the two can drift across app releases.
+  // Say so in the log at mount instead of letting the drift surface later as a
+  // cryptic request failure (the 0.2.0 incident, ADR 0004).
+  reportAlignment(ctx.logger)
 
   const settingsNs = ctx.fiber.entry?.options.id ?? DEFAULT_SETTINGS_NAMESPACE
   const resolveCredential = createCredentialResolver(ctx, name)

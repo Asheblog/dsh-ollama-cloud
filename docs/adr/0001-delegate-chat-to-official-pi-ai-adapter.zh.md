@@ -2,6 +2,10 @@
 
 状态：已采纳（2026-09-29）
 
+经 [ADR 0004](0004-pi-ai-generation-alignment.zh.md) 修订：本路由现在还会在自己的边界上
+归一化请求上下文。这是下文"决策"清单之外新增的一项贡献，也正是它让这份委托能够在
+"宿主跑在另一个 pi-ai 代际上"时继续成立。
+
 ## 背景
 
 Ollama Cloud 在 `https://ollama.com/v1` 提供 OpenAI 兼容的 Chat Completions

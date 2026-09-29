@@ -1,6 +1,6 @@
 {
   "name": "dsh-ollama-cloud",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Ollama Cloud provider for DeepSeek Harness: one-click provider setup with per-model reasoning-effort control and account usage in the Models page and sidebar.",
   "type": "module",
   "license": "MIT",
@@ -64,7 +64,8 @@
     },
     "compatibility": {
       "dshReleases": {
-        "0.2.0-rc.1": "compatible"
+        "0.2.0-rc.1": "compatible",
+        "0.2.0-rc.2": "compatible"
       }
     }
   },
@@ -73,11 +74,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run build",
+    "check:pi-ai": "node scripts/check-pi-ai-alignment.mjs",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run check:pi-ai",
     "pack:check": "node scripts/check-tarball.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.85.1"
+    "@earendil-works/pi-ai": "^0.87.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.4 <5.0.0",
@@ -122,16 +124,16 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
     "@deepseek-ai/cordis-plugin-loader": "1.0.5",
-    "@deepseek-ai/dsh-attachment": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-client-connection": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-credentials": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-launch-environment": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-llm": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-llm-pi-ai": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-timeout": "0.2.0-rc.1",
-    "@deepseek-ai/dsh-web": "0.2.0-rc.1",
+    "@deepseek-ai/dsh-attachment": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-connection": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-launch-environment": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-timeout": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-web": "0.2.0-rc.2",
     "@deepseek-ai/schemastery": "3.18.4",
-    "@earendil-works/pi-ai": "0.85.1",
+    "@earendil-works/pi-ai": "0.87.1",
     "@types/node": "^22.20.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",

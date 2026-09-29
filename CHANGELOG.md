@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.1 — 2026-09-29
+
+- Fixes every chat request failing instantly with `Cannot read properties of
+  undefined (reading 'length')` on DSH `0.2.0-rc.2`. The harness moved to pi-ai
+  0.87, which carries the prompt and the tool declarations inside the
+  transcript; this package was built against pi-ai 0.85, whose request
+  estimator has no `system` branch, so the failure happened while building the
+  request — before any network I/O — on the first stream of every turn.
+- Aligns `@earendil-works/pi-ai` with the generation the `0.2.0-rc.2` harness
+  declares (`^0.87.1`) and normalizes the request context at the route's own
+  boundary (idempotent), so one release serves both harness generations. A 0.87
+  build on an older harness no longer silently drops the system prompt and
+  every tool declaration — the mirror image of the same defect.
+- Adds `scripts/check-pi-ai-alignment.mjs` (wired into `pnpm check` and into a
+  scheduled `pi-ai-drift` workflow that probes the registry's `next` channel),
+  which fails when this package's declared pi-ai range and the harness's admit
+  no common version, plus a best-effort mount-time warning that names the same
+  drift where the installation can still be reached. Rationale and rejected
+  alternatives: [ADR 0004](docs/adr/0004-pi-ai-generation-alignment.md).
+- Declares compatibility with DSH `0.2.0-rc.2`.
+
 ## 0.2.0 — 2026-09-29
 
 - Adds the browser half: an Ollama Cloud usage card inside the official Models

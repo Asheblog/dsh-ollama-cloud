@@ -1,10 +1,39 @@
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 
 import type { Context, Volatile } from '@deepseek-ai/cordis'
 import * as React from 'react'
 import { vi } from 'vitest'
 
 import type { Config, ConfiguredModelEntry } from '../src/config.js'
+
+/**
+ * The pi-ai generation boundary (ADR 0004), read from the manifests that own it
+ * rather than hardcoded here: the range this package declares, the range the
+ * installed harness (the adapter that drives the route) declares, and the exact
+ * pi-ai version this repository installs.
+ */
+export const OWN_RANGE = packageManifest('../package.json').dependencies?.['@earendil-works/pi-ai'] as string
+
+export const HARNESS_RANGE = (
+  createRequire(import.meta.url)('@deepseek-ai/dsh-llm-pi-ai/package.json') as {
+    dependencies?: Record<string, string>
+  }
+).dependencies?.['@earendil-works/pi-ai'] as string
+
+export function installedPiAiVersion(): string {
+  return packageManifest('../package.json').devDependencies?.['@earendil-works/pi-ai'] ?? ''
+}
+
+function packageManifest(relative: string): {
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+} {
+  return JSON.parse(readFileSync(new URL(relative, import.meta.url), 'utf8')) as {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+  }
+}
 
 /** A stand-in for the harness's live configuration reference. */
 export function ref<T>(value: T) {

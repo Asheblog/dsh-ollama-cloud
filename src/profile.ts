@@ -10,10 +10,15 @@
  * wire spelling otherwise — because pi-ai treats an absent map key as
  * "supported" for the base levels.
  *
+ * The protocol is wrapped in {@link contextTolerantStreams}: this plugin's
+ * pi-ai is its own dependency, while the harness that drives it is the app's,
+ * and the two only agree on the request context if their generations match.
+ * See docs/adr/0004-pi-ai-generation-alignment.md.
+ *
  * @module dsh-ollama-cloud/profile
  */
 
-import { createProvider, type Api, type Credential, type CredentialStore, type AuthContext, type Model, type ProviderAuth } from '@earendil-works/pi-ai'
+import { createProvider, normalizeContext, type Api, type Credential, type CredentialStore, type AuthContext, type Model, type ProviderAuth, type ProviderStreams } from '@earendil-works/pi-ai'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
 import type { ResolvedPiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai'
 
@@ -136,6 +141,36 @@ export function createOllamaCloudAuth(): OllamaCloudAuthInjection {
 }
 
 /**
+ * Wrap one protocol implementation so a host generation that still passes the
+ * pre-0.87 `Context` — a `systemPrompt` and a separate `tools` list beside the
+ * messages — reaches it as the transcript pi-ai 0.87 expects.
+ *
+ * pi-ai 0.87 moved the prompt and the tool declarations into the transcript:
+ * its `Models` collection folds them with `normalizeContext()` before the
+ * request reaches a provider, and its API implementations read the result.
+ * The 0.1.x collections folded nothing — they handed the raw `Context` straight
+ * to the provider — so an implementation from the newer generation *silently
+ * drops the system prompt and every tool declaration* when an older harness
+ * drives it, and an implementation from the older generation dies with
+ * `Cannot read properties of undefined (reading 'length')` when the newer
+ * harness does (the 0.2.0 incident). Normalizing here costs one idempotent
+ * call — `normalizeContext()` on an already-normalized transcript is a no-op —
+ * and lets one release serve both host generations.
+ *
+ * @param streams - the protocol implementation the route streams with.
+ * @returns the same protocol, tolerant of the pre-0.87 context shape.
+ */
+export function contextTolerantStreams(streams: ProviderStreams): ProviderStreams {
+  return {
+    // Spread first so optional capabilities (deferred fetch/cancel) survive the
+    // wrap; a protocol that gains one must not lose it to this shim.
+    ...streams,
+    stream: (model, context, options) => streams.stream(model, normalizeContext(context), options),
+    streamSimple: (model, context, options) => streams.streamSimple(model, normalizeContext(context), options),
+  }
+}
+
+/**
  * Resolve the complete pi-ai provider profile for one connection snapshot.
  * @param connection - validated connection facts.
  * @returns the profile the official adapter consumes.
@@ -161,7 +196,7 @@ export function createPiAiProfile(connection: ConnectionOptions): ResolvedPiAiPr
       baseUrl: connection.chatBaseURL,
       auth: ollamaAuth(),
       models,
-      api: openAICompletionsApi(),
+      api: contextTolerantStreams(openAICompletionsApi()),
     }),
     configuredMaxTokens: new Map(
       connection.models.flatMap((model) => model.maxTokens === undefined ? [] : [[model.id, model.maxTokens]]),

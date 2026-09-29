@@ -1,0 +1,31 @@
+name: pi-ai drift
+
+# The route streams through this package's own `@earendil-works/pi-ai` copy
+# while the adapter calling it (`@deepseek-ai/dsh-llm-pi-ai`) belongs to the
+# app, and pi-ai is not a host-shared package — so an app release that moves
+# the harness to a new pi-ai generation strands every installed copy of this
+# plugin (the 0.2.0 incident). `pnpm check` already compares the ranges offline
+# against the pinned dev dependency; this workflow watches the registry, so the
+# drift is reported between releases instead of by users. See ADR 0004.
+
+on:
+  schedule:
+    # The desktop app follows the `next` channel on a nightly cadence; four
+    # probes a day catch a generation move within hours of publication.
+    - cron: '17 1,7,13,19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Newest harness generation still matches this package's pi-ai
+        run: node scripts/check-pi-ai-alignment.mjs --remote

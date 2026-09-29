@@ -142,8 +142,8 @@ Ollama 会下架云端模型（被下架的模型返回 HTTP 410）。本插件�
 
 ## 兼容性
 
-- 验证目标：DSH `0.2.0-rc.1`（`@deepseek-ai/dsh-*` 的 peer 范围是 `>=0.2.0-rc.1`，无上界；官方新版本若出现回归会记入 `dsh.compatibility.blocklist`）。
-- 运行依赖：`@earendil-works/pi-ai`（与 Harness 自身的 `dsh-llm-pi-ai` 同源）。
+- 验证目标：DSH `0.2.0-rc.1` 与 `0.2.0-rc.2`（`@deepseek-ai/dsh-*` 的 peer 范围是 `>=0.2.0-rc.1`，无上界；官方新版本若出现回归会记入 `dsh.compatibility.blocklist`）。
+- 运行依赖：`@earendil-works/pi-ai`，声明为已装 Harness 所属的代际（Harness `0.2.0-rc.2` 对应 `^0.87.1`）。pi-ai **不是**宿主共享包，本包这份与 Harness 那份只有代际一致时才彼此吻合。路由在自己的边界上归一化请求上下文——这正是 Harness 两代之间真正变化的那份契约——因此 `0.2.0-rc.1` 代宿主配本构建仍可用；`pnpm check` 与定时的 `pi-ai-drift` 工作流会在两侧声明区间**无公共版本**时失败；挂载时若插件能读到已装 Harness 的声明、且本构建落在其外，会打一条告警（尽力而为：宿主藏起 manifest 时表现为静默，可靠信号以 CI 为准）。设计依据见 [ADR 0004](docs/adr/0004-pi-ai-generation-alignment.zh.md)。
 - 协议解析、流式转换、回放与工具调用全部委托官方 `@deepseek-ai/dsh-llm-pi-ai` 的 `PiAiAdapter`，本插件只提供 Ollama 特有的连接事实、模型目录与档位元数据。设计依据见 [ADR 0001](docs/adr/0001-delegate-chat-to-official-pi-ai-adapter.zh.md)。
 - 浏览器半侧只占用宿主槽位（`settings.models.provider-card`、`sidebar.footer.action`）、使用宿主主题 token，并在 `inject` 里声明 `connection`；不依赖任何其它客户端包——用量通道（`/ollama-cloud` + `usage/read`）是本插件自己的，因此不需要任何供应商 UI 壳插件存在。
 - 已知限制：Ollama 的 OpenAI 兼容面不支持 `tool_choice`、`logprobs`，也不提供 prompt cache 统计；用量字段以它实际返回的为准。
