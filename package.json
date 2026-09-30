@@ -1,6 +1,6 @@
 {
   "name": "dsh-ollama-cloud",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Ollama Cloud provider for DeepSeek Harness: one-click provider setup with per-model reasoning-effort control and account usage in the Models page and sidebar.",
   "type": "module",
   "license": "MIT",

@@ -218,4 +218,45 @@ describe('rendered seats', () => {
     expect(markup).toContain('aria-expanded="false"')
     expect(markup).not.toContain('dshoc-sidebar-panel')
   })
+
+  it('draws the remaining share as a progress bar sized and graded by the primary window', async () => {
+    const { module: instance } = loadBundle()
+    const rpc = rpcStub({ ok: true, value: READY })
+    await instance.internals.store.read(rpc, { force: true })
+    const mount = mountClient(instance, rpc, translatorFor(instance))
+    const markup = renderToStaticMarkup(sidebarSeat(mount)({ wide: true }))
+    // The monthly window is primary at 89.1% consumed: 10.9% left fills the bar
+    // and grades it `warn`, and the label states the same number.
+    expect(markup).toContain('class="dshoc-bar"')
+    expect(markup).toContain('style="width:10.9%"')
+    expect(markup).toContain('data-severity="warn"')
+    expect(markup).toContain('role="img"')
+    expect(markup).toContain('aria-label="Ollama Cloud quota: 10.9% left"')
+    expect(markup).toContain('Resets at')
+    expect(markup).not.toContain('dshoc-rail-bar')
+  })
+
+  it('keeps only the mini bar and its number in the collapsed rail', async () => {
+    const { module: instance } = loadBundle()
+    const rpc = rpcStub({ ok: true, value: READY })
+    await instance.internals.store.read(rpc, { force: true })
+    const mount = mountClient(instance, rpc, translatorFor(instance))
+    const markup = renderToStaticMarkup(sidebarSeat(mount)({ wide: false }))
+    expect(markup).toContain('dshoc-rail-bar')
+    expect(markup).toContain('style="width:10.9%"')
+    expect(markup).toContain('10.9%')
+    // Text would not fit the 56px rail, so the label is carried by the title.
+    expect(markup).not.toContain('dshoc-sidebar-head')
+    expect(markup).not.toContain('Resets at')
+  })
+
+  it('shows a neutral, empty bar while no window has been read yet', () => {
+    const { module: instance } = loadBundle()
+    const mount = mountClient(instance, rpcStub({ ok: true, value: { status: 'unsupported' } }), translatorFor(instance))
+    const markup = renderToStaticMarkup(sidebarSeat(mount)({ wide: true }))
+    expect(markup).toContain('data-severity="none"')
+    expect(markup).toContain('data-loading="true"')
+    expect(markup).toContain('style="width:0%"')
+    expect(markup).toContain('Quota unavailable')
+  })
 })

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2 — 2026-09-30
+
+- Redraws the sidebar quota row as a progress bar: label and percentage on one
+  line, the bar under it. The bar fills with the remaining share and takes the
+  severity hue from it (`ok` / `warn` / `critical`), so it agrees with the
+  "remaining" label instead of pointing the other way; the reset line moves into
+  the button's hover title, and the collapsed 56px rail keeps only the mini bar
+  and its number.
+
 ## 0.2.1 — 2026-09-29
 
 - Fixes every chat request failing instantly with `Cannot read properties of

@@ -76,9 +76,13 @@ separate page, and no provider-UI shell plugin needed:
   meter per billing window with its remaining share and reset line, the primary
   window's per-model request counts, the write-only **API key** field, and a
   refresh button.
-- **Sidebar row**: a compact remaining-quota line under the session list; click
-  it for the per-window detail. It refreshes when the sidebar mounts and every
-  15 minutes after that.
+- **Sidebar row**: a compact remaining-quota progress bar under the session
+  list — the label and percentage on one line, the bar beneath it, filled with
+  what is *left* and graded by the remaining share (`ok` / `warn` / `critical`)
+  so a shrinking bar reads the same way as the number. Click it for the
+  per-window detail; a hover title carries the reset line. It refreshes when the
+  sidebar mounts and every 15 minutes after that, and the collapsed 56px rail
+  keeps the mini bar plus the percentage with no label.
 
 The card reads usage through this plugin's own host channel (`/ollama-cloud`),
 so the API key stays on the host and never reaches the browser. A local or
