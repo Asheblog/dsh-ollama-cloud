@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.3 — 2026-09-30
+
+- Keeps this half's stylesheet across a hot reload. The client module system
+  claims *every* untagged `<style>` in the document for whichever factory
+  materializes next, and deletes a plugin's claimed tags when that plugin is
+  replaced — so an untagged sheet appended by this plugin belonged to whoever
+  loaded next and died with *their* rebuild. The symptom is silent and confusing:
+  the new markup renders with no styling at all (a bare button reading
+  "Ollama Cloud 额度剩余 89.8%每 5 小时重置" instead of a progress bar). The
+  element is now tagged with this package's own id, which is the convention the
+  official client preset uses for its emitted styles, and a head observer
+  re-appends it if anything removes it anyway.
+
 ## 0.2.2 — 2026-09-30
 
 - Redraws the sidebar quota row as a progress bar: label and percentage on one

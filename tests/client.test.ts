@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { Translate } from './helpers.js'
 import { cardSeat, loadBundle, mountClient, sidebarSeat, translatorFor } from './helpers.js'
@@ -30,6 +30,44 @@ describe('bundle contract', () => {
     expect(mount.seats[0]?.options).toMatchObject({ key: 'llm-ollama-cloud' })
     expect(mount.seats[1]?.options).toMatchObject({ id: 'llm-ollama-cloud' })
     expect(mount.styles).toEqual(['dsh-ollama-cloud-styles'])
+  })
+
+  it('tags its stylesheet with its own module id so a neighbour cannot claim it', () => {
+    // The module system's claim sweep takes *every* untagged <style> for the
+    // plugin materializing next, and deletes a plugin's claimed tags when that
+    // plugin is hot-replaced — so an untagged sheet here dies with a neighbour's
+    // reload, which reads as "new markup, no styling at all".
+    const mount = mountClient(bundle, rpcStub({ ok: true, value: { status: 'unsupported' } }), t)
+    expect(mount.styleElements[0]?.attributes['data-plugin']).toBe(internals.STYLE_OWNER)
+    expect(internals.STYLE_OWNER).toBe(registrationId)
+    expect(mount.styleElements[0]?.textContent).toBe(internals.CSS)
+  })
+
+  it('re-appends its stylesheet when something removes it', () => {
+    let notify: (() => void) | undefined
+    class FakeObserver {
+      constructor(callback: () => void) {
+        notify = callback
+      }
+      observe() {}
+      disconnect() {
+        notify = undefined
+      }
+    }
+    const mount = mountClient(bundle, rpcStub({ ok: true, value: { status: 'unsupported' } }), t, {
+      globals: { MutationObserver: FakeObserver },
+    })
+    const element = mount.styleElements[0]
+    expect(element?.isConnected).toBe(true)
+    element?.remove()
+    expect(element?.isConnected).toBe(false)
+    // The observer fires long after the mount, so it needs a head to re-append into.
+    vi.stubGlobal('document', {
+      head: { appendChild: (target: { isConnected: boolean }) => { target.isConnected = true } },
+    })
+    notify?.()
+    vi.unstubAllGlobals()
+    expect(element?.isConnected).toBe(true)
   })
 })
 

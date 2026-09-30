@@ -233,24 +233,70 @@ export function translatorFor(module: ClientBundle): Translate {
   }
 }
 
+/** One style element the stub DOM saw, so tests can inspect how it was tagged. */
+export interface StubStyleElement {
+  id: string
+  textContent: string
+  attributes: Record<string, string>
+  isConnected: boolean
+  setAttribute: (name: string, value: string) => void
+  remove: () => void
+}
+
 /** One mounted client instance: what it registered and the seats it left behind. */
 export interface ClientMount {
   seats: CapturedSeat[]
   registered: string[]
   styles: string[]
+  /** The elements behind `styles`, in first-append order. */
+  styleElements: StubStyleElement[]
+}
+
+/** Extra globals a mount needs, e.g. the `MutationObserver` the stylesheet installs. */
+export interface MountOptions {
+  globals?: Record<string, unknown>
+}
+
+/** A style element stub: the bundle only sets an id, an attribute, text, and removes it. */
+function styleElementStub(): StubStyleElement {
+  return {
+    id: '',
+    textContent: '',
+    attributes: {},
+    isConnected: false,
+    setAttribute(name: string, value: string) {
+      this.attributes[name] = value
+    },
+    remove() {
+      this.isConnected = false
+    },
+  }
 }
 
 /**
  * Mount one bundle instance against a fake client context, with `rpc` reachable
  * through the connection service and the stylesheet host stubbed.
  */
-export function mountClient(module: ClientBundle, rpc: unknown, t: Translate): ClientMount {
+export function mountClient(
+  module: ClientBundle,
+  rpc: unknown,
+  t: Translate,
+  options: MountOptions = {},
+): ClientMount {
   const seats: CapturedSeat[] = []
   const registered: string[] = []
   const styles: string[] = []
+  const styleElements: StubStyleElement[] = []
+  const append = (element: StubStyleElement) => {
+    element.isConnected = true
+    if (styleElements.includes(element)) return
+    styleElements.push(element)
+    styles.push(element.id)
+  }
+  for (const [key, value] of Object.entries(options.globals ?? {})) vi.stubGlobal(key, value)
   vi.stubGlobal('document', {
-    head: { appendChild: (element: { id: string }) => styles.push(element.id) },
-    createElement: () => ({ id: '', textContent: '', remove: () => {} }),
+    head: { appendChild: append },
+    createElement: () => styleElementStub(),
   })
   module.apply({
     effect: (callback: () => unknown) => callback(),
@@ -268,7 +314,7 @@ export function mountClient(module: ClientBundle, rpc: unknown, t: Translate): C
     },
   })
   vi.unstubAllGlobals()
-  return { seats, registered, styles }
+  return { seats, registered, styles, styleElements }
 }
 
 /** The card seat's component, or a failure naming the missing registration. */
