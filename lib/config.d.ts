@@ -13,6 +13,7 @@ import type { Volatile } from '@deepseek-ai/cordis';
 import { type CredentialRef } from '@deepseek-ai/dsh-credentials';
 import type { ResolvedRetryPolicy, RetryPolicyConfig } from '@deepseek-ai/dsh-llm';
 import z from '@deepseek-ai/schemastery';
+import { type CatalogSource } from './catalog.js';
 import { type PinnedEfforts, type ThinkingLevel } from './reasoning.js';
 /** Provider route this plugin registers. */
 export declare const PROVIDER = "ollama-cloud";
@@ -32,6 +33,8 @@ export declare const DEFAULT_MAX_TOKENS = 32768;
 export declare const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300000;
 /** Per-attempt budget for one Ollama web-capability request. */
 export declare const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+/** Minutes between the periodic catalog refreshes a mounted route performs. */
+export declare const DEFAULT_REFRESH_MINUTES = 1440;
 /** One model entry as plugin configuration expresses it. */
 export interface ConfiguredModelEntry {
     /** Model id Ollama accepts on the wire. */
@@ -86,6 +89,11 @@ export interface Options {
  * its configuration changes. `retryPolicy` is deliberately not volatile — it
  * is captured with the adapter registration, and changing it requires a
  * reload, matching how the host treats registration-captured policy.
+ *
+ * `autoRefresh` and `refreshMinutes` are read by the plugin's catalog-refresh
+ * scheduler, not by {@link resolveConnection}: they decide when the catalog is
+ * fetched, never what the route's connection facts are, so changing them must
+ * not re-resolve the route.
  */
 export interface Config {
     /** Credential reference resolved per request; empty means provider-native auth. */
@@ -104,6 +112,15 @@ export interface Config {
     requestTimeoutMs: Volatile<number>;
     /** Provider-owned model-request retry policy; omission uses the host defaults. */
     retryPolicy?: RetryPolicyConfig;
+    /**
+     * Whether the catalog is refreshed from the endpoint at mount and on the
+     * interval below. Off serves the disk cache (or, before any fetch, the
+     * shipped snapshot) for as long as the route is mounted. A change is honored
+     * by the next scheduled pass; the mount refresh has already run by then.
+     */
+    autoRefresh: Volatile<boolean>;
+    /** Minutes between periodic catalog refreshes; `0` refreshes at mount only. */
+    refreshMinutes: Volatile<number>;
 }
 /** Runtime schema for {@link Config}; volatile fields are user-editable. */
 export declare const Config: z<Config>;
@@ -172,10 +189,12 @@ export declare function openAICompatibleBaseURL(baseURL: string): string;
  * reads. Invalid configuration throws with the offending field named, so the
  * plugin fails loudly at mount or on a settings save instead of sending
  * requests somewhere unintended.
+ *
  * @param config - raw configuration from the bundle row or the settings layer.
+ * @param catalog - the live catalog seam; omitted means the shipped snapshot.
  * @returns validated connection facts.
  */
-export declare function resolveConnection(config: Options): ConnectionOptions;
+export declare function resolveConnection(config: Options, catalog?: CatalogSource): ConnectionOptions;
 /**
  * Snapshot the live configuration into the plain form `resolveConnection`
  * consumes. Each volatile reference returns a stable snapshot that only
@@ -193,15 +212,19 @@ export declare function optionReferences(config: Config): readonly Volatile<unkn
  * Each volatile reference returns a stable snapshot that changes identity only
  * when its value changes, so an unchanged configuration resolves once and the
  * same {@link ConnectionOptions} object is reused — which is also what makes
- * the adapter's own snapshot memoization exact. A configuration that stops
- * resolving after a good one is reported and the last good facts keep serving,
+ * the adapter's own snapshot memoization exact. The live catalog's revision
+ * joins that identity: adopting a refreshed catalog moves it, so the route
+ * re-resolves and serves the new models, context windows, and thinking levels
+ * in the same session, without a reload. A configuration that stops resolving
+ * after a good one is reported and the last good facts keep serving,
  * so a half-edited settings section never takes the route down mid-session;
  * before any good resolution the error propagates, because the plugin must
  * fail loudly at mount rather than run unconfigured.
  *
  * @param config - live configuration handed to `apply`.
  * @param reportInvalid - sink for a resolution failure that last-good masked.
+ * @param catalog - live catalog seam; omitted resolves against the snapshot only.
  * @returns the reader every operation calls.
  */
-export declare function createConnectionReader(config: Config, reportInvalid: (error: unknown) => void): () => ConnectionOptions;
+export declare function createConnectionReader(config: Config, reportInvalid: (error: unknown) => void, catalog?: CatalogSource): () => ConnectionOptions;
 //# sourceMappingURL=config.d.ts.map

@@ -8,9 +8,13 @@
  * and use the configured credential when one exists, so a self-hosted or
  * gated endpoint works too.
  *
- * Discovery is advisory: the harness offers the answer for adoption and never
- * stores it, and a model whose detail request fails stays listed with the id
- * the listing gave.
+ * Two consumers read this module, and they want different shapes:
+ * `discoverModels` answers a configuration surface with candidates for
+ * *adoption* (so it keeps only what the endpoint described), while
+ * `discoverCatalog` answers the route's own self-updating catalog with the
+ * complete listing (membership comes from `/api/tags` alone). Both share one
+ * decoder, so a capability the plugin serves and a capability a user may adopt
+ * can never disagree.
  *
  * @module dsh-ollama-cloud/discovery
  */
@@ -43,9 +47,13 @@ export declare function decodeTagsResponse(body: unknown): string[];
  * Decode one `/api/show` response into a catalog entry carrying the fields
  * that endpoint discloses: context window, vision input, and thinking levels.
  *
- * A model that reports the thinking capability without a level list gets the
- * boolean treatment (`off` plus one `high` level) because that is how Ollama
- * answers such models: any recognized effort switches thinking on.
+ * Every field is answered or left unset, and unset means "the endpoint did not
+ * say" — never a negative. A model that reports the thinking capability
+ * without a level list gets the boolean treatment (`off` plus one `high` level)
+ * because that is how Ollama answers such models: any recognized effort
+ * switches thinking on. A response with no `capabilities` field at all instead
+ * leaves the level declaration out, so a caller that already knew this model's
+ * levels keeps them.
  *
  * @param id - model id the response belongs to.
  * @param body - parsed response body.
@@ -68,6 +76,42 @@ export interface DiscoveryDeps {
     /** Harness attribution headers; defaults to none. */
     readonly attribution?: () => Record<string, string>;
 }
+/**
+ * One endpoint listing, plus the ids its detail requests actually described.
+ *
+ * Membership and description are separate answers: `/api/tags` decides which
+ * models exist, `/api/show` says how much is known about each. A consumer that
+ * must copy metadata (adoption) filters on `described`; a consumer that serves
+ * the list keeps every entry that is not retired.
+ */
+export interface DiscoveredCatalog {
+    /** Every model the listing names and the endpoint still serves, enriched where `/api/show` answered. */
+    readonly entries: readonly OllamaModelEntry[];
+    /** Ids whose `/api/show` response was decoded, in listing order. */
+    readonly described: readonly string[];
+}
+/**
+ * List the endpoint's models and describe each with `/api/show` metadata.
+ *
+ * Three outcomes are kept apart, because they mean different things:
+ *
+ * - **described** — the endpoint answered; the entry carries its metadata.
+ * - **retired** — the endpoint answered 404/410 for a model its own listing
+ *   still names: it is gone, so it is left out of the catalog rather than
+ *   offered and left to fail at request time.
+ * - **unknown** — the detail request timed out or failed some other way. The
+ *   model is kept, undeclared, and the next pass describes it; dropping a real
+ *   model because one request was slow would hide it for a whole interval.
+ *
+ * A refused *listing* fails the whole call, so a caller reports the endpoint
+ * problem instead of showing an empty catalog.
+ *
+ * @param target - endpoint and credential for this pass.
+ * @param deps - injectable fetch and attribution headers.
+ * @param signal - caller cancellation.
+ * @returns the listed entries and the ids that were described.
+ */
+export declare function discoverCatalog(target: DiscoveryTarget, deps: DiscoveryDeps, signal?: AbortSignal): Promise<DiscoveredCatalog>;
 /**
  * List the endpoint's models and describe each with `/api/show` metadata.
  *

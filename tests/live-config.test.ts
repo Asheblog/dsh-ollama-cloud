@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { DEFAULT_MODELS, type CatalogSource, type OllamaModelEntry } from '../src/catalog.js'
 import { createConnectionReader } from '../src/config.js'
 import { liveConfig } from './helpers.js'
 
@@ -46,5 +47,25 @@ describe('createConnectionReader', () => {
     expect(reader().models.map((model) => model.id)).toContain('kimi-k3')
     references.models.set([{ id: 'kimi-k3', enabled: false }])
     expect(reader().models.map((model) => model.id)).not.toContain('kimi-k3')
+  })
+
+  it('re-resolves when the live catalog moves to a new revision', () => {
+    let revision = 0
+    let models: readonly OllamaModelEntry[] | undefined
+    const catalog: CatalogSource = { revision: () => revision, modelsFor: () => models }
+    const { config } = liveConfig()
+    const reader = createConnectionReader(config, () => {}, catalog)
+
+    expect(reader().models).toHaveLength(DEFAULT_MODELS.length)
+
+    // A new catalog that has not announced itself yet is not observed: the
+    // revision is the identity the reader memoizes on.
+    models = [{ id: 'brand-new' }]
+    expect(reader().models).toHaveLength(DEFAULT_MODELS.length)
+
+    revision = 1
+    const refreshed = reader()
+    expect(refreshed.models.map((model) => model.id)).toEqual(['brand-new'])
+    expect(reader()).toBe(refreshed)
   })
 })

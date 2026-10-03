@@ -6,6 +6,8 @@ Ollama Cloud provider for DeepSeek Harness: install it and the provider is confi
 
 Chat runs on Ollama's OpenAI-compatible surface (`https://ollama.com/v1`), model discovery reads Ollama's own native API (`/api/tags`, `/api/show`), and Ollama's web search/fetch endpoints register as harness `ctx.web` providers. The thinking levels each model publishes (off / low / high / max, …) come straight from that model's `thinking` wire metadata, so the composer's Effort selector adjusts real capability instead of a guess.
 
+The catalog is not frozen at release either. **On every mount the plugin asks the configured endpoint what it serves and adopts the answer for the running session**, then caches it for the next boot; a long-running session refreshes again on an interval. A model Ollama adds, retires, or re-levels therefore reaches you without waiting for a plugin update.
+
 ## Install
 
 ```sh
@@ -34,9 +36,23 @@ Keys come from <https://ollama.com/settings/keys>. The catalog and metadata endp
 2. Pick an **effort** in the same menu. The offered levels depend on the model, and the default comes from Ollama's own model metadata.
 3. Thinking streams into the transcript like any other provider. The effort is stored per session; a running step keeps the level it started with.
 
-### Shipped models and levels
+### The catalog: the endpoint is the authority
 
-Snapshot of live metadata (`/api/tags` + `/api/show`) taken 2026-09-29:
+Ollama adds and retires cloud models on its own schedule, so this plugin does not treat its own release as the model list. Every mount asks the configured endpoint what it serves — `GET /api/tags` for membership, `POST /api/show` for each model's context window, input modalities, and the thinking ladder plus default that model itself declares — and serves that answer. The layers, highest first:
+
+| Layer | What it decides |
+| --- | --- |
+| Your `models` configuration | per-id overrides, additions, and `enabled: false` retirements |
+| The endpoint, just fetched | which models exist, and every capability each one declares |
+| The cache of the last fetch | the same answer, read from disk before the network answers |
+| The shipped snapshot | display names, and the fallback until some fetch has succeeded |
+
+Two consequences worth knowing:
+
+- **A retired model leaves by itself.** A model the endpoint stops listing disappears, and one its listing still names but answers `404`/`410` for is dropped too — that answer is the endpoint saying its own listing is stale. A detail request that merely *fails* (timeout, 5xx, 429) keeps the model with what the listing said: a slow `/api/show` must not hide a real model for a whole refresh interval.
+- **New models arrive with their own levels.** A model the snapshot never shipped keeps its id as the display name until a release gives it a prettier one; its thinking levels are still whatever `/api/show` reports.
+
+What ships is the snapshot a session falls back to before its first successful fetch — live `GET https://ollama.com/api/tags` + `POST https://ollama.com/api/show` metadata taken 2026-09-29:
 
 | Model | Context | Vision | Levels | Default |
 | --- | ---: | :---: | --- | --- |
@@ -62,7 +78,15 @@ Models whose metadata is a boolean switch (`kimi-k2.6`, `gemma4:31b`, …) expos
 
 ### Refreshing the catalog
 
-Ollama retires cloud models (a retired id answers HTTP 410). The shipped catalog is a snapshot, not an authority:
+On by default, and nothing about it blocks a boot:
+
+- **At mount** — one refresh as soon as the route is up. The model list is already correct before it lands, because the cache below answers first.
+- **On an interval** — `refreshMinutes` later (default `1440`, i.e. daily), and again after each pass. The tick re-reads the live configuration, so turning the refresh off or changing the interval applies at the next pass instead of requiring a reload.
+- **The cache** — `<DSH home>/cache/dsh-ollama-cloud/catalog.json`: written atomically, validated on read, ignored when it is malformed or belongs to another endpoint. It lives outside the installed package, so updating the plugin keeps it, and it is what an offline restart — or any restart's first second — is served from.
+
+Turn the whole thing off with `autoRefresh: false` (the route then serves the cache, or the shipped snapshot before any fetch), or keep the mount refresh alone with `refreshMinutes: 0`.
+
+The manual surfaces remain:
 
 - **Discover from the endpoint**: any surface calling `llm/discoverModels` lists what the endpoint currently serves, with context windows and input modalities. Only models `/api/show` can fully describe become candidates.
 - **Edit by hand**: override `models` in the plugin configuration (below). `enabled: false` hides a shipped model.
@@ -109,10 +133,12 @@ Every field is editable from the plugin settings page and overridable per row in
     defaultContextWindow: 262144     # context fallback for models that declare none
     streamIdleTimeoutMs: 300000      # maximum idle time between stream reads
     requestTimeoutMs: 15000       # per-attempt budget for the non-chat requests (discovery, web search/fetch)
+    autoRefresh: true                # refresh the catalog at mount and on the interval
+    refreshMinutes: 1440             # minutes between refreshes; 0 = refresh at mount only
     retryPolicy:                     # executed by dsh-llm-retry
       mode: normal
       maxRetries: 5
-    models:                          # merges over the built-in catalog by id; new ids append
+    models:                          # merges over the live catalog by id; new ids append
       - id: gpt-oss:20b
         contextWindow: 131072
         reasoningEfforts: { off: none, low: low, medium: medium, high: high }
@@ -128,9 +154,11 @@ Every field is editable from the plugin settings page and overridable per row in
 
 Field semantics:
 
-- `reasoningEfforts` keys are the levels the picker offers (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`); values are the spellings sent to Ollama (`off: none`). `false` declares a model with no thinking control; omission inherits the built-in entry, and an id neither the catalog nor the entry describes takes the standard ladder (`off`/`low`/`medium`/`high`/`max`) with no default claimed.
+- `autoRefresh` and `refreshMinutes` control the catalog refresh described above. Both are read live: switching the refresh off, or changing the interval, takes effect at the next scheduled pass.
+- `models` merges over whatever catalog is in force — the endpoint's live answer, or the shipped snapshot when no fetch has succeeded — and always wins by id, so `enabled: false` retires a model the endpoint still serves.
+- `reasoningEfforts` keys are the levels the picker offers (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`); values are the spellings sent to Ollama (`off: none`). `false` declares a model with no thinking control; omission inherits the live entry's levels, and an id neither the endpoint nor the entry describes takes the standard ladder (`off`/`low`/`medium`/`high`/`max`) with no default claimed.
 - `defaultEffort` must be one of the offered levels. It is materialized when a session picks none; otherwise the model's own default applies.
-- An override inherits the built-in default level only while it leaves `reasoningEfforts` alone — changing the level set makes the declaration authoritative.
+- An override inherits the in-force default level only while it leaves `reasoningEfforts` alone — changing the level set makes the declaration authoritative.
 - A declared `defaultEffort` outside the offered set fails at mount instead of degrading silently.
 
 ### Local Ollama / self-hosted endpoints
@@ -163,7 +191,8 @@ Both share the route's credential reference and `baseURL`. Requests carry the cr
 - Runtime dependency: `@earendil-works/pi-ai`, declared at the generation the installed harness speaks (`^0.87.1` for harness `0.2.0-rc.2`). pi-ai is **not** a host-shared package, so this copy and the harness's own only agree while their generations do. The route normalizes the request context at its own boundary, which is the contract that changed between harness generations, so a `0.2.0-rc.1`-era host keeps working with this build; `pnpm check` and the scheduled `pi-ai-drift` workflow fail when the two declared ranges admit no common version, and the plugin logs one mount-time warning when it can reach the installed harness's declaration and this build falls outside it (best-effort: a host that hides its manifest reads as silence, and CI is the reliable signal). Rationale: [ADR 0004](docs/adr/0004-pi-ai-generation-alignment.md).
 - Protocol translation, streaming, replay, and tool calls are delegated wholesale to the official `@deepseek-ai/dsh-llm-pi-ai` `PiAiAdapter`; this plugin contributes Ollama-specific connection facts, the model catalog, and level metadata. Rationale: [ADR 0001](docs/adr/0001-delegate-chat-to-official-pi-ai-adapter.md).
 - The browser half renders only in host slots (`settings.models.provider-card`, `sidebar.footer.action`) with host theme tokens, declares `connection` in its `inject`, and requires no other client package: the usage channel (`/ollama-cloud` + `usage/read`) is the plugin's own, so no provider-UI shell has to exist for the card to work.
-- Known limits: Ollama's OpenAI-compatible surface supports neither `tool_choice` nor `logprobs`, and reports no prompt-cache statistics; usage is whatever it actually returns.
+- Known limits: Ollama's OpenAI-compatible surface supports neither `tool_choice` nor `logprobs`, and reports no prompt-cache statistics; usage is whatever it actually returns. The catalog cache holds one endpoint at a time — pointing `baseURL` at a second endpoint serves the shipped snapshot until that endpoint answers.
+- The model list, every model's context window and input modalities, and every thinking ladder come from the configured endpoint (`/api/tags` + `/api/show`), refreshed at mount and on an interval; the shipped snapshot only fills a display name for an id it already knew, and the gap before the first successful fetch. Rationale: [ADR 0005](docs/adr/0005-live-endpoint-catalog.md).
 
 ## Development
 

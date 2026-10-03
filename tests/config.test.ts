@@ -1,7 +1,7 @@
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_MODELS } from '../src/catalog.js'
+import { DEFAULT_MODELS, type CatalogSource, type OllamaModelEntry } from '../src/catalog.js'
 import {
   DEFAULT_API_KEY_ENV,
   DEFAULT_BASE_URL,
@@ -155,5 +155,49 @@ describe('resolveConnection', () => {
   it('rejects non-positive numeric overrides', () => {
     expect(() => resolveConnection({ defaultContextWindow: 0 })).toThrow(/defaultContextWindow/)
     expect(() => resolveConnection({ models: [{ id: 'x', contextWindow: -1 }] })).toThrow(/contextWindow/)
+  })
+})
+
+describe('resolveConnection over a live catalog', () => {
+  /** A catalog seam holding one endpoint's freshly fetched entries. */
+  function liveCatalog(endpoint: string, models: readonly OllamaModelEntry[]): CatalogSource {
+    return {
+      revision: () => 1,
+      modelsFor: (nativeBaseURL) => (nativeBaseURL === endpoint ? models : undefined),
+    }
+  }
+
+  it('takes the endpoint list as the catalog, not the shipped snapshot', () => {
+    const connection = resolveConnection(
+      {},
+      liveCatalog(DEFAULT_BASE_URL, [
+        {
+          id: 'glm-5.3',
+          contextWindow: 4096,
+          reasoningEfforts: { low: 'low', high: 'high' },
+          defaultEffort: 'high',
+        },
+        { id: 'brand-new' },
+      ]),
+    )
+
+    expect(connection.models.map((model) => model.id)).toEqual(['glm-5.3', 'brand-new'])
+    // The endpoint's own levels, not the snapshot's `low/high/max` + `max`.
+    expect(connection.models[0]?.efforts.max).toBeNull()
+    expect(connection.models[0]?.defaultEffort).toBe('high')
+    expect(connection.models[1]?.efforts.off).toBe('none')
+  })
+
+  it('lets a configured entry still override the live entry', () => {
+    const connection = resolveConnection(
+      { models: [{ id: 'glm-5.3', enabled: false }] },
+      liveCatalog(DEFAULT_BASE_URL, [{ id: 'glm-5.3' }, { id: 'brand-new' }]),
+    )
+    expect(connection.models.map((model) => model.id)).toEqual(['brand-new'])
+  })
+
+  it('falls back to the shipped snapshot for an endpoint the live catalog does not know', () => {
+    const connection = resolveConnection({}, liveCatalog('http://localhost:11434/api', [{ id: 'brand-new' }]))
+    expect(connection.models.map((model) => model.id)).toEqual(DEFAULT_MODELS.map((model) => model.id))
   })
 })

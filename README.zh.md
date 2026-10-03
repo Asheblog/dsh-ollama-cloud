@@ -6,6 +6,8 @@ DeepSeek Harness 的 Ollama Cloud 供应商插件：装完即用，并且**每�
 
 聊天走 Ollama 的 OpenAI 兼容接口（`https://ollama.com/v1`），模型发现走它自己的原生接口（`/api/tags`、`/api/show`），Web 搜索/抓取则注册成 Harness 的 `ctx.web` 能力。每个模型对外公布的思考档位（off / low / high / max 等）直接来自 Ollama 对该模型的 `thinking` 元数据，所以 composer 里的 Effort 选择器调的是真实能力，不是猜的。
 
+模型目录同样不随插件版本冻结：**每次装载时插件都会问配置的端点当前提供哪些模型，并把答案用在本次会话里**，同时缓存给下次启动；长时间运行的会话还会按间隔再刷。于是 Ollama 新增、下架或改了档位的模型，都不需要等插件更新。
+
 ## 安装
 
 ```sh
@@ -34,9 +36,23 @@ Key 在 <https://ollama.com/settings/keys> 申请。模型目录与元数据接�
 2. 同一个菜单里选**推理强度**：可选项随模型变化，默认值取自 Ollama 的模型默认值。
 3. 思考内容会像其他供应商一样出现在会话里；强度是**按会话**保存的，运行中的回合保留它开始时的档位。
 
-### 内置模型与档位
+### 模型目录：端点说了算
 
-以下快照取自 2026-09-29 的实际元数据（`/api/tags` + `/api/show`）：
+Ollama 自己决定什么时候上架、下架云端模型，所以本插件不把自己的发布当作模型清单。每次装载它都会问配置的端点当前提供什么——`GET /api/tags` 决定有哪些模型，`POST /api/show` 给出每个模型的上下文窗口、输入类型，以及该模型自己声明的思考档位阶梯与默认档位——然后就用这个答案。优先级从高到低：
+
+| 层 | 决定什么 |
+| --- | --- |
+| 你的 `models` 配置 | 按 id 的覆写、追加，以及 `enabled: false` 的下架 |
+| 刚抓到的端点答案 | 有哪些模型，以及每个模型声明了什么能力 |
+| 上次抓取的缓存 | 同一份答案，先于网络响应从磁盘读出 |
+| 内置快照 | 显示名，以及首次成功抓取之前的兜底 |
+
+两个值得知道的后果：
+
+- **下架的模型会自己消失。** 端点不再列出的模型会消失；仍然列在清单里、但 `/api/show` 返回 `404`/`410` 的也会被剔除——那正是端点自己说"我的清单过期了"。而仅仅是**请求失败**（超时、5xx、429）的模型会保留，并沿用清单给出的信息：一次慢响应不该让真实模型在整个刷新间隔里都看不见。
+- **新模型带着自己的档位出现。** 快照没见过的模型先用 id 作显示名，直到某个版本给它一个更好看的名字；它的思考档位仍然来自 `/api/show`。
+
+仓库内置的是"首次成功抓取之前"的兜底快照，取自 2026-09-29 的实际元数据（`/api/tags` + `/api/show`）：
 
 | 模型 | 上下文 | 视觉 | 可选档位 | 默认 |
 | --- | ---: | :---: | --- | --- |
@@ -58,14 +74,22 @@ Key 在 <https://ollama.com/settings/keys> 申请。模型目录与元数据接�
 | `gemma4:31b` | 262,144 | ✔ | Off / High | Off |
 | `mistral-large-3:675b` | 262,144 | ✔ | （不支持思考） | — |
 
-Ollama 只支持布尔思考开关的模型（如 `kimi-k2.6`、`gemma4:31b`）只暴露 Off 与 High 两档——High 在 wire 上就是「打开思考」；`minimax-m2.7` 的元数据是 `[true]`，关不掉思考，所以只有 High。`minimax-m3` 只报告了思考能力、没有档位阶梯，因此走标准档位且不声明默认值；任何「目录与你的配置都没描述过」的模型同理。
+Ollama 只支持布尔思考开关的模型（如 `kimi-k2.6`、`gemma4:31b`）只暴露 Off 与 High 两档——High 在 wire 上就是「打开思考」；`minimax-m2.7` 的元数据是 `[true]`，关不掉思考，所以只有 High。`minimax-m3` 只报告了思考能力、没有档位阶梯，因此走标准档位且不声明默认值；任何「端点与你的配置都没描述过」的模型同理。
 
 ### 刷新模型目录
 
-Ollama 会下架云端模型（被下架的模型返回 HTTP 410）。本插件内置目录是快照，不是权威：
+默认开启，且不会拖慢启动：
 
-- **从端点发现**：调用 `llm/discoverModels` 的界面（如插件市场的 provider 卡）会列出端点当前提供的模型及其上下文窗口与输入类型；只有能被 `/api/show` 完整描述的模型才会作为候选返回。
-- **手工增删**：在插件配置里覆盖 `models`（见下）。`enabled: false` 可以把某个内置模型藏起来。
+- **装载时**：route 起来后立刻刷一次。在它落地之前模型列表就已经是对的，因为下面这层缓存先回答。
+- **按间隔**：`refreshMinutes` 分钟后（默认 `1440`，即每天一次），每刷完一次再排下一次。每次到点都重新读取实时配置，所以关掉刷新或改间隔会在下一轮生效，不用重载插件。
+- **缓存**：`<DSH home>/cache/dsh-ollama-cloud/catalog.json`，原子写入、读取时校验，格式不对或属于另一个端点就忽略。它在安装包之外，所以更新插件不会丢；离线重启，以及任何一次重启的头一秒，都由它来回答。
+
+`autoRefresh: false` 可以整个关掉（此时 route 用缓存，首次抓取前用内置快照）；`refreshMinutes: 0` 则只保留装载时那一次。
+
+手工入口仍然保留：
+
+- **从端点发现**：调用 `llm/discoverModels` 的界面会列出端点当前提供的模型及其上下文窗口与输入类型；只有能被 `/api/show` 完整描述的模型才会作为候选返回。
+- **手工增删**：在插件配置里覆盖 `models`（见下）。`enabled: false` 可以把某个模型藏起来。
 
 ### 界面里的云端用量
 
@@ -92,10 +116,12 @@ Ollama 会下架云端模型（被下架的模型返回 HTTP 410）。本插件�
     defaultContextWindow: 262144     # 未单独声明的模型的上下文回退
     streamIdleTimeoutMs: 300000      # 流式读取的空闲上限
     requestTimeoutMs: 15000       # 非聊天请求的每次尝试预算（模型发现、Web 搜索/抓取）
+    autoRefresh: true                # 装载时与按间隔刷新模型目录
+    refreshMinutes: 1440             # 刷新间隔（分钟）；0 = 只在装载时刷
     retryPolicy:                     # 由 dsh-llm-retry 执行
       mode: normal
       maxRetries: 5
-    models:                          # 按 id 覆盖内置目录；未知 id 追加到末尾
+    models:                          # 按 id 覆盖当前生效的目录；未知 id 追加到末尾
       - id: gpt-oss:20b
         contextWindow: 131072
         reasoningEfforts: { off: none, low: low, medium: medium, high: high }
@@ -111,9 +137,11 @@ Ollama 会下架云端模型（被下架的模型返回 HTTP 410）。本插件�
 
 字段语义：
 
-- `reasoningEfforts` 的**键**是选择器提供的档位（`off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`），**值**是发到 Ollama 的拼写（例如 `off: none`）。`false` 表示该模型不可调思考；省略则沿用内置条目；若 id 既不在内置目录、条目里也没写，则走标准档（`off`/`low`/`medium`/`high`/`max`）且不声明默认档位。
+- `autoRefresh` 与 `refreshMinutes` 控制上面那套目录刷新。两者都按实时配置读取：关掉刷新、或改间隔，会在下一轮定时生效。
+- `models` 覆盖的是**当前生效**的目录（端点的实时答案；首次抓取成功前是内置快照），并且始终按 id 优先，所以 `enabled: false` 能下架端点仍在提供的模型。
+- `reasoningEfforts` 的**键**是选择器提供的档位（`off` / `minimal` / `low` / `medium` / `high` / `xhigh` / `max`），**值**是发到 Ollama 的拼写（例如 `off: none`）。`false` 表示该模型不可调思考；省略则沿用实时条目的档位；若 id 端点与条目都没描述，则走标准档（`off`/`low`/`medium`/`high`/`max`）且不声明默认档位。
 - `defaultEffort` 必须在 `reasoningEfforts` 里；会话没选档位时用它，否则跟随模型自己的默认。
-- 覆写条目只在**没有**改 `reasoningEfforts` 时才继承内置默认档位——改了档位集合就以你的声明为准。
+- 覆写条目只在**没有**改 `reasoningEfforts` 时才继承当前生效的默认档位——改了档位集合就以你的声明为准。
 - 显式写了 `defaultEffort` 但不在可选档位里会在装载时报错，而不是静默降级。
 
 ### 本地 Ollama / 自建端点
@@ -146,7 +174,8 @@ Ollama 会下架云端模型（被下架的模型返回 HTTP 410）。本插件�
 - 运行依赖：`@earendil-works/pi-ai`，声明为已装 Harness 所属的代际（Harness `0.2.0-rc.2` 对应 `^0.87.1`）。pi-ai **不是**宿主共享包，本包这份与 Harness 那份只有代际一致时才彼此吻合。路由在自己的边界上归一化请求上下文——这正是 Harness 两代之间真正变化的那份契约——因此 `0.2.0-rc.1` 代宿主配本构建仍可用；`pnpm check` 与定时的 `pi-ai-drift` 工作流会在两侧声明区间**无公共版本**时失败；挂载时若插件能读到已装 Harness 的声明、且本构建落在其外，会打一条告警（尽力而为：宿主藏起 manifest 时表现为静默，可靠信号以 CI 为准）。设计依据见 [ADR 0004](docs/adr/0004-pi-ai-generation-alignment.zh.md)。
 - 协议解析、流式转换、回放与工具调用全部委托官方 `@deepseek-ai/dsh-llm-pi-ai` 的 `PiAiAdapter`，本插件只提供 Ollama 特有的连接事实、模型目录与档位元数据。设计依据见 [ADR 0001](docs/adr/0001-delegate-chat-to-official-pi-ai-adapter.zh.md)。
 - 浏览器半侧只占用宿主槽位（`settings.models.provider-card`、`sidebar.footer.action`）、使用宿主主题 token，并在 `inject` 里声明 `connection`；不依赖任何其它客户端包——用量通道（`/ollama-cloud` + `usage/read`）是本插件自己的，因此不需要任何供应商 UI 壳插件存在。
-- 已知限制：Ollama 的 OpenAI 兼容面不支持 `tool_choice`、`logprobs`，也不提供 prompt cache 统计；用量字段以它实际返回的为准。
+- 已知限制：Ollama 的 OpenAI 兼容面不支持 `tool_choice`、`logprobs`，也不提供 prompt cache 统计；用量字段以它实际返回的为准。目录缓存一次只保存一个端点——把 `baseURL` 换成另一个端点后，在新端点回答之前走内置快照。
+- 模型清单、每个模型的上下文窗口与输入类型、每个模型的思考档位阶梯全部来自配置的端点（`/api/tags` + `/api/show`），在装载时与按间隔刷新；内置快照只负责两件事：给已知 id 提供显示名，以及首次成功抓取之前的兜底。设计依据见 [ADR 0005](docs/adr/0005-live-endpoint-catalog.zh.md)。
 
 ## 开发
 

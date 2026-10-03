@@ -8,20 +8,31 @@
  * each model offers come from the model's own wire metadata, so the composer's
  * effort selector adjusts real capability instead of a guess.
  *
+ * The catalog itself is not frozen at release: at mount — and then on an
+ * interval — the plugin asks the configured endpoint what it serves and adopts
+ * the answer for the running session and the next boot (see `live-catalog.ts`),
+ * so a model Ollama adds, retires, or re-levels reaches users without a plugin
+ * update.
+ *
  * @module dsh-ollama-cloud
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { type Config as ConfigShape, type ConnectionOptions } from './config.js';
 import { type ResolveCredential } from './credentials.js';
 export { OllamaCloudAdapter } from './adapter.js';
-export { Config, createConnectionReader, DEFAULT_API_KEY_ENV, DEFAULT_BASE_URL, DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, DEFAULT_STREAM_IDLE_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS, DISPLAY_NAME, nativeAPIBaseURL, openAICompatibleBaseURL, PROVIDER, resolveConnection, } from './config.js';
+export { Config, createConnectionReader, DEFAULT_API_KEY_ENV, DEFAULT_BASE_URL, DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, DEFAULT_REFRESH_MINUTES, DEFAULT_STREAM_IDLE_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS, DISPLAY_NAME, nativeAPIBaseURL, openAICompatibleBaseURL, PROVIDER, resolveConnection, } from './config.js';
 export { createCredentialResolver } from './credentials.js';
 export type { ResolveCredential } from './credentials.js';
 export type { Config as ConfigShape, ConfiguredModelEntry, ConnectionOptions, Options, ResolvedModel } from './config.js';
-export { DEFAULT_MODELS } from './catalog.js';
+export { DEFAULT_MODELS, mergeCatalogEntry, mergeLiveCatalog } from './catalog.js';
 export { plainOptions } from './config.js';
-export type { OllamaModelEntry } from './catalog.js';
-export { DEFAULT_DISCOVERY_TIMEOUT_MS, discoverModels, nativeBaseFrom } from './discovery.js';
+export type { CatalogSource, OllamaModelEntry } from './catalog.js';
+export { DEFAULT_DISCOVERY_TIMEOUT_MS, discoverCatalog, discoverModels, nativeBaseFrom } from './discovery.js';
+export type { DiscoveredCatalog } from './discovery.js';
+export { createLiveCatalog } from './live-catalog.js';
+export type { CachedCatalog, LiveCatalog, LiveCatalogOptions, LiveCatalogRefresh, LiveCatalogTarget } from './live-catalog.js';
+export { CATALOG_CACHE_FILE, CATALOG_CACHE_VERSION, defaultCatalogCachePath, readCatalogCache, writeCatalogCache, } from './catalog-cache.js';
+export type { CacheWriteResult, CatalogCacheSnapshot } from './catalog-cache.js';
 export { CREDENTIAL_SET_ENDPOINT, CREDENTIAL_STATUS_ENDPOINT, createUsageRpcHandler, USAGE_ENDPOINT, USAGE_RPC_CHANNEL, } from './rpc.js';
 export type { CredentialSetValue, CredentialStatusValue, UsageReadValue, UsageRpcHandler, WireUsageSnapshot, WireUsageWindow, } from './rpc.js';
 export { toWireUsage } from './rpc.js';
@@ -50,7 +61,8 @@ export declare const DEFAULT_SETTINGS_NAMESPACE = "llm-ollama-cloud";
  */
 export declare function createRouteApiKeyResolver(resolveCredential: ResolveCredential): (facts: ConnectionOptions) => Promise<string | undefined>;
 /**
- * Mount the Ollama Cloud route, its discovery surface, and its web providers.
+ * Mount the Ollama Cloud route, its discovery surface, its web providers, and
+ * the catalog refresh that keeps the route's model list current.
  * @param ctx - the plugin's context.
  * @param config - live configuration for this row.
  */

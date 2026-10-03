@@ -16,7 +16,7 @@ import type { ResolvedRetryPolicy, RetryPolicyConfig } from '@deepseek-ai/dsh-ll
 import { resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
 import z from '@deepseek-ai/schemastery'
 
-import { DEFAULT_MODELS, type OllamaModelEntry } from './catalog.js'
+import { DEFAULT_MODELS, type CatalogSource, type OllamaModelEntry } from './catalog.js'
 import { GENERIC_EFFORTS, pinEfforts, THINKING_LEVELS, type PinnedEfforts, type ThinkingLevel } from './reasoning.js'
 
 /** Provider route this plugin registers. */
@@ -45,6 +45,9 @@ export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300000
 
 /** Per-attempt budget for one Ollama web-capability request. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15000
+
+/** Minutes between the periodic catalog refreshes a mounted route performs. */
+export const DEFAULT_REFRESH_MINUTES = 1440
 
 /** One model entry as plugin configuration expresses it. */
 export interface ConfiguredModelEntry {
@@ -102,6 +105,11 @@ export interface Options {
  * its configuration changes. `retryPolicy` is deliberately not volatile — it
  * is captured with the adapter registration, and changing it requires a
  * reload, matching how the host treats registration-captured policy.
+ *
+ * `autoRefresh` and `refreshMinutes` are read by the plugin's catalog-refresh
+ * scheduler, not by {@link resolveConnection}: they decide when the catalog is
+ * fetched, never what the route's connection facts are, so changing them must
+ * not re-resolve the route.
  */
 export interface Config {
   /** Credential reference resolved per request; empty means provider-native auth. */
@@ -120,6 +128,15 @@ export interface Config {
   requestTimeoutMs: Volatile<number>
   /** Provider-owned model-request retry policy; omission uses the host defaults. */
   retryPolicy?: RetryPolicyConfig
+  /**
+   * Whether the catalog is refreshed from the endpoint at mount and on the
+   * interval below. Off serves the disk cache (or, before any fetch, the
+   * shipped snapshot) for as long as the route is mounted. A change is honored
+   * by the next scheduled pass; the mount refresh has already run by then.
+   */
+  autoRefresh: Volatile<boolean>
+  /** Minutes between periodic catalog refreshes; `0` refreshes at mount only. */
+  refreshMinutes: Volatile<number>
 }
 
 const modelEntrySchema = z.object({
@@ -143,6 +160,8 @@ export const Config = z.object({
   streamIdleTimeoutMs: z.number().step(1).min(1).default(DEFAULT_STREAM_IDLE_TIMEOUT_MS).volatile(),
   requestTimeoutMs: z.number().step(1).min(1).default(DEFAULT_REQUEST_TIMEOUT_MS).volatile(),
   retryPolicy: RetryPolicySchema,
+  autoRefresh: z.boolean().default(true).volatile(),
+  refreshMinutes: z.number().step(1).min(0).default(DEFAULT_REFRESH_MINUTES).volatile(),
 }) as unknown as z<Config>
 
 /** One model as the adapter serves it: metadata resolved, levels pinned. */
@@ -324,8 +343,23 @@ function resolveModel(
   }
 }
 
-/** Merge configured entries over the built-in catalog. */
-function resolveModels(config: Options, defaults: { contextWindow: number; maxTokens: number }): ResolvedModel[] {
+/**
+ * Merge configured entries over one base catalog.
+ *
+ * The base is whatever the caller established as the catalog authority — the
+ * endpoint's live answer, or the shipped snapshot when no endpoint has been
+ * read — and configuration always wins over it by id.
+ *
+ * @param config - plain plugin configuration.
+ * @param defaults - route-level context and output defaults.
+ * @param base - catalog the configured entries merge over.
+ * @returns the models the route serves, in base order with new ids appended.
+ */
+function resolveModels(
+  config: Options,
+  defaults: { contextWindow: number; maxTokens: number },
+  base: readonly OllamaModelEntry[],
+): ResolvedModel[] {
   const overrides = new Map<string, ConfiguredModelEntry>()
   for (const entry of config.models ?? []) {
     const id = entry?.id?.trim()
@@ -339,11 +373,11 @@ function resolveModels(config: Options, defaults: { contextWindow: number; maxTo
   }
 
   const models: ResolvedModel[] = []
-  for (const base of DEFAULT_MODELS) {
-    const override = overrides.get(base.id)
-    overrides.delete(base.id)
+  for (const shipped of base) {
+    const override = overrides.get(shipped.id)
+    overrides.delete(shipped.id)
     if (override?.enabled === false) continue
-    models.push(resolveModel(base.id, override, base, defaults))
+    models.push(resolveModel(shipped.id, override, shipped, defaults))
   }
   for (const [id, entry] of overrides) {
     if (entry?.enabled === false) continue
@@ -357,10 +391,12 @@ function resolveModels(config: Options, defaults: { contextWindow: number; maxTo
  * reads. Invalid configuration throws with the offending field named, so the
  * plugin fails loudly at mount or on a settings save instead of sending
  * requests somewhere unintended.
+ *
  * @param config - raw configuration from the bundle row or the settings layer.
+ * @param catalog - the live catalog seam; omitted means the shipped snapshot.
  * @returns validated connection facts.
  */
-export function resolveConnection(config: Options): ConnectionOptions {
+export function resolveConnection(config: Options, catalog?: CatalogSource): ConnectionOptions {
   const nativeBaseURL = nativeAPIBaseURL(assertBaseURL((config.baseURL ?? DEFAULT_BASE_URL).trim()))
   const defaultContextWindow = assertPositive(
     config.defaultContextWindow ?? DEFAULT_CONTEXT_WINDOW,
@@ -378,13 +414,16 @@ export function resolveConnection(config: Options): ConnectionOptions {
 
   const rawRef = (config.apiKeyEnv ?? DEFAULT_API_KEY_ENV).trim()
   const apiKeyEnv = rawRef.length === 0 ? undefined : credentialRef(rawRef)
+  // The endpoint answer is the catalog whenever this endpoint has one; the
+  // snapshot is what a route serves before the first successful refresh.
+  const base = catalog?.modelsFor(nativeBaseURL) ?? DEFAULT_MODELS
 
   return {
     provider: PROVIDER,
     nativeBaseURL,
     chatBaseURL: openAICompatibleBaseURL(nativeBaseURL),
     ...apiKeyEnv === undefined ? {} : { apiKeyEnv },
-    models: resolveModels(config, { contextWindow: defaultContextWindow, maxTokens: defaultMaxTokens }),
+    models: resolveModels(config, { contextWindow: defaultContextWindow, maxTokens: defaultMaxTokens }, base),
     defaultContextWindow,
     defaultMaxTokens,
     streamIdleTimeoutMs,
@@ -434,31 +473,36 @@ export function optionReferences(config: Config): readonly Volatile<unknown>[] {
  * Each volatile reference returns a stable snapshot that changes identity only
  * when its value changes, so an unchanged configuration resolves once and the
  * same {@link ConnectionOptions} object is reused — which is also what makes
- * the adapter's own snapshot memoization exact. A configuration that stops
- * resolving after a good one is reported and the last good facts keep serving,
+ * the adapter's own snapshot memoization exact. The live catalog's revision
+ * joins that identity: adopting a refreshed catalog moves it, so the route
+ * re-resolves and serves the new models, context windows, and thinking levels
+ * in the same session, without a reload. A configuration that stops resolving
+ * after a good one is reported and the last good facts keep serving,
  * so a half-edited settings section never takes the route down mid-session;
  * before any good resolution the error propagates, because the plugin must
  * fail loudly at mount rather than run unconfigured.
  *
  * @param config - live configuration handed to `apply`.
  * @param reportInvalid - sink for a resolution failure that last-good masked.
+ * @param catalog - live catalog seam; omitted resolves against the snapshot only.
  * @returns the reader every operation calls.
  */
 export function createConnectionReader(
   config: Config,
   reportInvalid: (error: unknown) => void,
+  catalog?: CatalogSource,
 ): () => ConnectionOptions {
   const references = optionReferences(config)
   let lastSnapshots: readonly unknown[] | undefined
   let lastGood: ConnectionOptions | undefined
   return () => {
-    const snapshots = references.map((reference) => reference.get())
+    const snapshots = [...references.map((reference) => reference.get()), catalog?.revision()]
     if (lastGood !== undefined && lastSnapshots !== undefined
       && snapshots.every((snapshot, index) => snapshot === lastSnapshots?.[index])) {
       return lastGood
     }
     try {
-      const connection = resolveConnection(plainOptions(config))
+      const connection = resolveConnection(plainOptions(config), catalog)
       lastSnapshots = snapshots
       lastGood = connection
       return connection

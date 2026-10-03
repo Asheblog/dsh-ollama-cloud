@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { decodeShowResponse, decodeTagsResponse, discoverModels } from '../src/discovery.js'
+import { decodeShowResponse, decodeTagsResponse, discoverCatalog, discoverModels } from '../src/discovery.js'
 
 // Bodies shaped like live https://ollama.com/api responses captured 2026-09-29.
 const DEEPSEEK_SHOW = {
@@ -74,6 +74,16 @@ describe('decodeShowResponse', () => {
   it('records a negative vision capability but leaves an absent one unknown', () => {
     expect(decodeShowResponse('gpt-oss:20b', { capabilities: ['completion', 'tools'] }).vision).toBe(false)
     expect(decodeShowResponse('gpt-oss:20b', { model_info: {} })).not.toHaveProperty('vision')
+  })
+
+  it('leaves thinking unanswered when the response said nothing about it', () => {
+    // An endpoint that returns no `capabilities` at all has not answered "this
+    // model cannot think" — the caller keeps whatever it already knew.
+    expect(decodeShowResponse('gpt-oss:20b', { model_info: {} })).not.toHaveProperty('reasoningEfforts')
+    expect(decodeShowResponse('gpt-oss:20b', { capabilities: ['completion', 'tools'] })).toHaveProperty(
+      'reasoningEfforts',
+      false,
+    )
   })
 })
 
@@ -181,5 +191,60 @@ describe('discoverModels', () => {
         { fetch: route as unknown as typeof fetch },
       ),
     ).rejects.toThrow(/401/)
+  })
+})
+
+describe('discoverCatalog', () => {
+  it('keeps every listed model, describing the ones /api/show answered for', async () => {
+    const route: Route = async (url, init) => {
+      if (url.endsWith('/tags')) {
+        return jsonResponse({ models: [{ name: 'deepseek-v4.1-flash' }, { name: 'slow-model' }] })
+      }
+      const body = JSON.parse(String(init?.body)) as { model: string }
+      if (body.model === 'slow-model') return jsonResponse({ error: 'unavailable' }, 503)
+      return jsonResponse(DEEPSEEK_SHOW)
+    }
+
+    const catalog = await discoverCatalog(
+      { baseURL: 'https://ollama.com/api' },
+      { fetch: route as unknown as typeof fetch },
+    )
+
+    expect(catalog.described).toEqual(['deepseek-v4.1-flash'])
+    // A detail request that failed without an answer says nothing about the
+    // model, so the listing still serves it — with only what the listing said.
+    expect(catalog.entries).toEqual([
+      {
+        id: 'deepseek-v4.1-flash',
+        contextWindow: 1048576,
+        vision: true,
+        reasoningEfforts: { off: 'none', low: 'low', high: 'high', max: 'max' },
+        defaultEffort: 'high',
+      },
+      { id: 'slow-model' },
+    ])
+  })
+
+  it('retires a model the endpoint answers 404 or 410 for', async () => {
+    const route: Route = async (url, init) => {
+      if (url.endsWith('/tags')) {
+        return jsonResponse({ models: [{ name: 'kimi-k3' }, { name: 'retired-model' }, { name: 'unknown-id' }] })
+      }
+      const body = JSON.parse(String(init?.body)) as { model: string }
+      if (body.model === 'retired-model') return jsonResponse({ error: 'retired' }, 410)
+      if (body.model === 'unknown-id') return jsonResponse({ error: 'not found' }, 404)
+      return jsonResponse({ capabilities: ['completion', 'tools'], model_info: {} })
+    }
+
+    const catalog = await discoverCatalog(
+      { baseURL: 'https://ollama.com/api' },
+      { fetch: route as unknown as typeof fetch },
+    )
+
+    // An answer of "no such model" is the endpoint's own statement that its
+    // listing is stale, so the entry is dropped instead of offered and left to
+    // fail at request time.
+    expect(catalog.entries.map((entry) => entry.id)).toEqual(['kimi-k3'])
+    expect(catalog.described).toEqual(['kimi-k3'])
   })
 })

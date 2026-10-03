@@ -8,6 +8,12 @@
  * each model offers come from the model's own wire metadata, so the composer's
  * effort selector adjusts real capability instead of a guess.
  *
+ * The catalog itself is not frozen at release: at mount — and then on an
+ * interval — the plugin asks the configured endpoint what it serves and adopts
+ * the answer for the running session and the next boot (see `live-catalog.ts`),
+ * so a model Ollama adds, retires, or re-levels reaches users without a plugin
+ * update.
+ *
  * @module dsh-ollama-cloud
  */
 
@@ -31,6 +37,7 @@ import {
 } from './config.js'
 import { createCredentialResolver, type ResolveCredential } from './credentials.js'
 import { discoverModels, nativeBaseFrom } from './discovery.js'
+import { createLiveCatalog } from './live-catalog.js'
 import { createUsageRpcHandler, USAGE_RPC_CHANNEL } from './rpc.js'
 import { OllamaWebFetchProvider, OllamaWebSearchProvider } from './web.js'
 
@@ -42,6 +49,7 @@ export {
   DEFAULT_BASE_URL,
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_MAX_TOKENS,
+  DEFAULT_REFRESH_MINUTES,
   DEFAULT_STREAM_IDLE_TIMEOUT_MS,
   DEFAULT_REQUEST_TIMEOUT_MS,
   DISPLAY_NAME,
@@ -53,10 +61,21 @@ export {
 export { createCredentialResolver } from './credentials.js'
 export type { ResolveCredential } from './credentials.js'
 export type { Config as ConfigShape, ConfiguredModelEntry, ConnectionOptions, Options, ResolvedModel } from './config.js'
-export { DEFAULT_MODELS } from './catalog.js'
+export { DEFAULT_MODELS, mergeCatalogEntry, mergeLiveCatalog } from './catalog.js'
 export { plainOptions } from './config.js'
-export type { OllamaModelEntry } from './catalog.js'
-export { DEFAULT_DISCOVERY_TIMEOUT_MS, discoverModels, nativeBaseFrom } from './discovery.js'
+export type { CatalogSource, OllamaModelEntry } from './catalog.js'
+export { DEFAULT_DISCOVERY_TIMEOUT_MS, discoverCatalog, discoverModels, nativeBaseFrom } from './discovery.js'
+export type { DiscoveredCatalog } from './discovery.js'
+export { createLiveCatalog } from './live-catalog.js'
+export type { CachedCatalog, LiveCatalog, LiveCatalogOptions, LiveCatalogRefresh, LiveCatalogTarget } from './live-catalog.js'
+export {
+  CATALOG_CACHE_FILE,
+  CATALOG_CACHE_VERSION,
+  defaultCatalogCachePath,
+  readCatalogCache,
+  writeCatalogCache,
+} from './catalog-cache.js'
+export type { CacheWriteResult, CatalogCacheSnapshot } from './catalog-cache.js'
 export {
   CREDENTIAL_SET_ENDPOINT,
   CREDENTIAL_STATUS_ENDPOINT,
@@ -126,15 +145,19 @@ export function createRouteApiKeyResolver(
 }
 
 /**
- * Mount the Ollama Cloud route, its discovery surface, and its web providers.
+ * Mount the Ollama Cloud route, its discovery surface, its web providers, and
+ * the catalog refresh that keeps the route's model list current.
  * @param ctx - the plugin's context.
  * @param config - live configuration for this row.
  */
 export function apply(ctx: Context, config: ConfigShape): void {
+  const catalog = createLiveCatalog({
+    deps: { fetch, attribution: attributionHeaders },
+  })
   const connection = createConnectionReader(config, (error) => {
     ctx.logger.warn('llm-ollama-cloud: configuration is invalid; keeping the last good connection facts')
     ctx.logger.warn(error)
-  })
+  }, catalog)
   // Resolve once at mount so an unusable row config fails loudly instead of
   // surfacing as a request-time error nobody attributes to configuration.
   connection()
@@ -152,6 +175,43 @@ export function apply(ctx: Context, config: ConfigShape): void {
   const storedKey = async (facts: ConnectionOptions): Promise<string | undefined> => {
     const reference = facts.apiKeyEnv
     return reference === undefined ? undefined : resolveCredential(reference)
+  }
+
+  /**
+   * Ask the configured endpoint what it serves and adopt the answer.
+   *
+   * Ollama adds and retires cloud models on its own schedule, so this — not the
+   * shipped snapshot — is what keeps the model list and every model's thinking
+   * levels current. Nothing here is fatal: a failure leaves the catalog in use
+   * exactly as it was, and the next pass (or the next boot) tries again.
+   */
+  let refreshing = false
+  const refreshCatalog = async (reason: string): Promise<void> => {
+    if (refreshing) return
+    refreshing = true
+    try {
+      const facts = connection()
+      const apiKey = await storedKey(facts)
+      const result = await catalog.refresh({
+        endpoint: facts.nativeBaseURL,
+        ...apiKey === undefined ? {} : { apiKey },
+        requestTimeoutMs: facts.requestTimeoutMs,
+      })
+      const unpersisted = result.cache.ok ? '' : `; cache not written (${result.cache.error})`
+      ctx.logger.info(
+        `llm-ollama-cloud: ${reason} catalog refresh: ${result.models} models,`
+        + ` ${result.described} described by /api/show,`
+        + ` ${result.changed ? 'catalog changed' : 'catalog unchanged'}${unpersisted}`,
+      )
+    } catch (error) {
+      ctx.logger.warn(
+        `llm-ollama-cloud: ${reason} catalog refresh failed;`
+        + ' the catalog already in use keeps serving (the next pass retries)',
+      )
+      ctx.logger.warn(error)
+    } finally {
+      refreshing = false
+    }
   }
 
   const resolveApiKey = createRouteApiKeyResolver(resolveCredential)
@@ -235,4 +295,44 @@ export function apply(ctx: Context, config: ConfigShape): void {
       }
     }, 'llm-ollama-cloud: web providers')
   })
+
+  // Say which catalog this session starts from. The cache is what makes the
+  // first model list already the endpoint's last answer, so a failure to reach
+  // the endpoint at mount is a delay, not a regression.
+  const cached = catalog.cached()
+  ctx.logger.info(
+    cached === undefined
+      ? 'llm-ollama-cloud: no cached catalog yet; serving the shipped snapshot until the endpoint answers'
+      : `llm-ollama-cloud: serving the cached catalog of ${cached.endpoint}`
+        + ` (${cached.models} models, fetched ${new Date(cached.fetchedAt).toISOString()})`,
+  )
+
+  if (config.autoRefresh.get()) {
+    // Deliberately not awaited: a slow endpoint must not hold up the boot, and
+    // the model list is already correct from the cache (or the snapshot).
+    void refreshCatalog('mount')
+  }
+
+  // The interval re-reads the live configuration on every pass, so switching
+  // the refresh off — or to another interval — takes effect at the next tick
+  // instead of requiring a reload.
+  ctx.effect(() => {
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const arm = (): void => {
+      if (stopped || !config.autoRefresh.get()) return
+      const minutes = config.refreshMinutes.get()
+      if (!(minutes > 0)) return
+      timer = setTimeout(() => {
+        void refreshCatalog('interval')
+        arm()
+      }, minutes * 60_000)
+      timer.unref?.()
+    }
+    arm()
+    return () => {
+      stopped = true
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }, 'llm-ollama-cloud: catalog refresh timer')
 }

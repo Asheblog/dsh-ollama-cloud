@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.3.0 — 2026-10-03
+
+- **The catalog now updates itself.** At mount — and then on a configurable
+  interval (default: daily) — the plugin asks the configured endpoint what it
+  serves (`GET /api/tags` + `POST /api/show`) and adopts the answer for the
+  running session, so a model Ollama adds, retires, or re-levels no longer
+  waits for a plugin release. Adopting a catalog moves the revision the
+  connection reader memoizes on, which is how the new model list *and* every
+  model's thinking levels reach the picker without a restart.
+- Caches that answer at `<DSH home>/cache/dsh-ollama-cloud/catalog.json`
+  (atomic writes, validated on read, one endpoint at a time), so the first
+  model list of any boot — and an offline boot — is the endpoint's last answer
+  rather than the shipped snapshot. The snapshot is demoted to two jobs:
+  display names for ids it already knew, and the fallback before any fetch has
+  succeeded.
+- Separates the three `/api/show` outcomes. A described model gets its
+  metadata; a model the endpoint answers `404`/`410` for is retired from the
+  catalog even while its own listing still names it; a model whose detail
+  request merely *failed* stays listed with what the listing said, because one
+  slow request must not hide a real model for a whole interval. An empty
+  listing is refused outright — a model picker with nothing in it cannot be
+  recovered from.
+- Adds `autoRefresh` (default `true`) and `refreshMinutes` (default `1440`; `0`
+  refreshes at mount only) to the plugin configuration. Both are read live, so
+  the next scheduled pass honors a change.
+- The test suite no longer touches the developer's harness home: it runs every
+  test against a throwaway `DSH_HOME` (`vitest.config.ts` + `tests/setup.ts`),
+  which the catalog cache made necessary and which the suite now depends on.
+- Design rationale, including the rejected alternatives:
+  [ADR 0005](docs/adr/0005-live-endpoint-catalog.md).
+
 ## 0.2.3 — 2026-09-30
 
 - Keeps this half's stylesheet across a hot reload. The client module system

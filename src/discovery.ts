@@ -8,9 +8,13 @@
  * and use the configured credential when one exists, so a self-hosted or
  * gated endpoint works too.
  *
- * Discovery is advisory: the harness offers the answer for adoption and never
- * stores it, and a model whose detail request fails stays listed with the id
- * the listing gave.
+ * Two consumers read this module, and they want different shapes:
+ * `discoverModels` answers a configuration surface with candidates for
+ * *adoption* (so it keeps only what the endpoint described), while
+ * `discoverCatalog` answers the route's own self-updating catalog with the
+ * complete listing (membership comes from `/api/tags` alone). Both share one
+ * decoder, so a capability the plugin serves and a capability a user may adopt
+ * can never disagree.
  *
  * @module dsh-ollama-cloud/discovery
  */
@@ -19,7 +23,7 @@ import type { LlmDiscoveredModel, ModelModality } from '@deepseek-ai/dsh-llm'
 
 import type { OllamaModelEntry } from './catalog.js'
 import { nativeAPIBaseURL } from './config.js'
-import { GENERIC_EFFORTS, offeredEffortMap, policyFromThinking } from './reasoning.js'
+import { GENERIC_EFFORTS, offeredEffortMap, policyFromThinking, type ThinkingLevel } from './reasoning.js'
 
 /** Default per-request budget for one discovery call. */
 export const DEFAULT_DISCOVERY_TIMEOUT_MS = 15000
@@ -102,9 +106,13 @@ function readCapabilities(body: Record<string, unknown>): string[] | undefined {
  * Decode one `/api/show` response into a catalog entry carrying the fields
  * that endpoint discloses: context window, vision input, and thinking levels.
  *
- * A model that reports the thinking capability without a level list gets the
- * boolean treatment (`off` plus one `high` level) because that is how Ollama
- * answers such models: any recognized effort switches thinking on.
+ * Every field is answered or left unset, and unset means "the endpoint did not
+ * say" — never a negative. A model that reports the thinking capability
+ * without a level list gets the boolean treatment (`off` plus one `high` level)
+ * because that is how Ollama answers such models: any recognized effort
+ * switches thinking on. A response with no `capabilities` field at all instead
+ * leaves the level declaration out, so a caller that already knew this model's
+ * levels keeps them.
  *
  * @param id - model id the response belongs to.
  * @param body - parsed response body.
@@ -117,16 +125,17 @@ export function decodeShowResponse(id: string, body: unknown): OllamaModelEntry 
   const policy = policyFromThinking(record.thinking)
   // The endpoint may name the thinking capability without a ladder: the
   // standard names apply, and no default is claimed because none was declared.
-  const efforts = policy === undefined
-    ? capabilities?.includes('thinking') === true ? GENERIC_EFFORTS : false
-    : offeredEffortMap(policy.efforts)
+  let efforts: Partial<Record<ThinkingLevel, string>> | false | undefined
+  if (policy !== undefined) efforts = offeredEffortMap(policy.efforts)
+  else if (capabilities === undefined) efforts = undefined
+  else efforts = capabilities.includes('thinking') ? GENERIC_EFFORTS : false
   const defaultEffort = policy?.defaultEffort
 
   return {
     id,
     ...contextWindow === undefined ? {} : { contextWindow },
     ...capabilities === undefined ? {} : { vision: capabilities.includes('vision') },
-    reasoningEfforts: efforts,
+    ...efforts === undefined ? {} : { reasoningEfforts: efforts },
     ...defaultEffort === undefined ? {} : { defaultEffort },
   }
 }
@@ -175,7 +184,23 @@ function attemptSignal(callerSignal: AbortSignal | undefined, timeoutMs: number)
   return callerSignal === undefined ? timeout : AbortSignal.any([callerSignal, timeout])
 }
 
-/** POST one JSON call and parse its reply, or report the status. */
+/**
+ * Statuses that mean "this endpoint does not serve that model" rather than
+ * "no answer yet": Ollama answers 404 for an unknown id and 410 for a retired
+ * one. Anything else (401/403/429/5xx, a timeout, a transport error) is a
+ * failure to answer, which says nothing about whether the model exists.
+ */
+const MISSING_STATUSES = new Set([404, 410])
+
+/** One detail request's outcome: an answer, a refusal, or "no answer yet". */
+type DetailAnswer =
+  | { readonly ok: true; readonly body: unknown }
+  | { readonly ok: false; readonly status: number }
+
+/**
+ * POST one JSON call and read its reply, or report the status it refused with.
+ * A transport failure or timeout still throws, because that is not an answer.
+ */
 async function postJson(
   url: string,
   payload: unknown,
@@ -183,7 +208,7 @@ async function postJson(
   deps: DiscoveryDeps,
   signal: AbortSignal | undefined,
   timeoutMs: number,
-): Promise<unknown> {
+): Promise<DetailAnswer> {
   const response = await deps.fetch(url, {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json' },
@@ -192,10 +217,112 @@ async function postJson(
     signal: attemptSignal(signal, timeoutMs),
   })
   if (!response.ok) {
+    const status = response.status
     await response.body?.cancel()
-    throw new Error(`${url} answered ${response.status}`)
+    return { ok: false, status }
   }
-  return await response.json()
+  return { ok: true, body: await response.json() }
+}
+
+/** One model's place in the listing, and how much the endpoint said about it. */
+interface DetailResult {
+  /** Model id from the listing. */
+  readonly id: string
+  /** Decoded `/api/show` entry, when the endpoint described the model. */
+  readonly entry?: OllamaModelEntry
+  /** The endpoint answered 404/410: it does not serve this model any more. */
+  readonly missing: boolean
+}
+
+/**
+ * One endpoint listing, plus the ids its detail requests actually described.
+ *
+ * Membership and description are separate answers: `/api/tags` decides which
+ * models exist, `/api/show` says how much is known about each. A consumer that
+ * must copy metadata (adoption) filters on `described`; a consumer that serves
+ * the list keeps every entry that is not retired.
+ */
+export interface DiscoveredCatalog {
+  /** Every model the listing names and the endpoint still serves, enriched where `/api/show` answered. */
+  readonly entries: readonly OllamaModelEntry[]
+  /** Ids whose `/api/show` response was decoded, in listing order. */
+  readonly described: readonly string[]
+}
+
+/**
+ * List the endpoint's models and describe each with `/api/show` metadata.
+ *
+ * Three outcomes are kept apart, because they mean different things:
+ *
+ * - **described** — the endpoint answered; the entry carries its metadata.
+ * - **retired** — the endpoint answered 404/410 for a model its own listing
+ *   still names: it is gone, so it is left out of the catalog rather than
+ *   offered and left to fail at request time.
+ * - **unknown** — the detail request timed out or failed some other way. The
+ *   model is kept, undeclared, and the next pass describes it; dropping a real
+ *   model because one request was slow would hide it for a whole interval.
+ *
+ * A refused *listing* fails the whole call, so a caller reports the endpoint
+ * problem instead of showing an empty catalog.
+ *
+ * @param target - endpoint and credential for this pass.
+ * @param deps - injectable fetch and attribution headers.
+ * @param signal - caller cancellation.
+ * @returns the listed entries and the ids that were described.
+ */
+export async function discoverCatalog(
+  target: DiscoveryTarget,
+  deps: DiscoveryDeps,
+  signal?: AbortSignal,
+): Promise<DiscoveredCatalog> {
+  const base = target.baseURL.replace(/\/+$/, '')
+  const timeoutMs = target.requestTimeoutMs ?? DEFAULT_DISCOVERY_TIMEOUT_MS
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+    ...deps.attribution?.() ?? {},
+    ...target.apiKey === undefined ? {} : { authorization: `Bearer ${target.apiKey}` },
+  }
+
+  const listing = await deps.fetch(`${base}/tags`, {
+    headers,
+    redirect: 'error',
+    signal: attemptSignal(signal, timeoutMs),
+  })
+  if (!listing.ok) {
+    await listing.body?.cancel()
+    throw new Error(`ollama-cloud discovery: ${base}/tags answered ${listing.status}`)
+  }
+  const ids = decodeTagsResponse(await listing.json())
+
+  const entries: OllamaModelEntry[] = []
+  const described: string[] = []
+  for (let start = 0; start < ids.length; start += DETAIL_CONCURRENCY) {
+    const batch = ids.slice(start, start + DETAIL_CONCURRENCY)
+    const details: DetailResult[] = await Promise.all(
+      batch.map(async (id): Promise<DetailResult> => {
+        try {
+          const answer = await postJson(`${base}/show`, { model: id }, headers, deps, signal, timeoutMs)
+          if (!answer.ok) return { id, missing: MISSING_STATUSES.has(answer.status) }
+          return { id, entry: decodeShowResponse(id, answer.body), missing: false }
+        } catch (error) {
+          if (signal?.aborted === true) throw error
+          return { id, missing: false }
+        }
+      }),
+    )
+    for (const detail of details) {
+      if (detail.missing) continue
+      if (detail.entry === undefined) {
+        // No answer yet: the listing still says the model exists, so it is
+        // served with only what the listing said.
+        entries.push({ id: detail.id })
+        continue
+      }
+      described.push(detail.id)
+      entries.push(detail.entry)
+    }
+  }
+  return { entries, described }
 }
 
 /**
@@ -218,44 +345,9 @@ export async function discoverModels(
   deps: DiscoveryDeps,
   signal?: AbortSignal,
 ): Promise<LlmDiscoveredModel[]> {
-  const base = target.baseURL.replace(/\/+$/, '')
-  const timeoutMs = target.requestTimeoutMs ?? DEFAULT_DISCOVERY_TIMEOUT_MS
-  const headers: Record<string, string> = {
-    accept: 'application/json',
-    ...deps.attribution?.() ?? {},
-    ...target.apiKey === undefined ? {} : { authorization: `Bearer ${target.apiKey}` },
-  }
-
-  const listing = await deps.fetch(`${base}/tags`, {
-    headers,
-    redirect: 'error',
-    signal: attemptSignal(signal, timeoutMs),
-  })
-  if (!listing.ok) {
-    await listing.body?.cancel()
-    throw new Error(`ollama-cloud discovery: ${base}/tags answered ${listing.status}`)
-  }
-  const ids = decodeTagsResponse(await listing.json())
-
-  const candidates: LlmDiscoveredModel[] = []
-  for (let start = 0; start < ids.length; start += DETAIL_CONCURRENCY) {
-    const batch = ids.slice(start, start + DETAIL_CONCURRENCY)
-    const details = await Promise.all(
-      batch.map(async (id) => {
-        try {
-          const body = await postJson(`${base}/show`, { model: id }, headers, deps, signal, timeoutMs)
-          return decodeShowResponse(id, body)
-        } catch (error) {
-          if (signal?.aborted === true) throw error
-          return undefined
-        }
-      }),
-    )
-    for (const [index, entry] of details.entries()) {
-      const id = batch[index]
-      if (id === undefined || entry === undefined) continue
-      candidates.push(toDiscoveredModel(entry, id))
-    }
-  }
-  return candidates
+  const catalog = await discoverCatalog(target, deps, signal)
+  const described = new Set(catalog.described)
+  return catalog.entries
+    .filter((entry) => described.has(entry.id))
+    .map((entry) => toDiscoveredModel(entry, entry.id))
 }

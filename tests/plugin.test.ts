@@ -2,7 +2,8 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { OllamaCloudAdapter } from '../src/adapter.js'
-import { resolveConnection } from '../src/config.js'
+import { DEFAULT_MODELS } from '../src/catalog.js'
+import { Config, DEFAULT_REFRESH_MINUTES, resolveConnection } from '../src/config.js'
 import { createCredentialResolver } from '../src/credentials.js'
 import { nativeBaseFrom } from '../src/discovery.js'
 import {
@@ -14,7 +15,7 @@ import {
   name,
   PROVIDER,
 } from '../src/index.js'
-import { fakeContext, liveConfig, ref } from './helpers.js'
+import { fakeContext, liveConfig, ollamaEndpoint, ref } from './helpers.js'
 
 describe('plugin contract', () => {
   it('declares the loader-facing identity', () => {
@@ -255,5 +256,92 @@ describe('live configuration changes', () => {
     expect((await adapter.listModels(PROVIDER)).map((model) => model.id)).toContain('kimi-k3')
     references.models.set([{ id: 'kimi-k3', enabled: false }])
     expect((await adapter.listModels(PROVIDER)).map((model) => model.id)).not.toContain('kimi-k3')
+  })
+})
+
+describe('automatic catalog refresh', () => {
+  const SHOW_NEW = {
+    capabilities: ['completion', 'thinking', 'tools'],
+    model_info: { 'brand_new.context_length': 4096 },
+    thinking: { values: [false, 'high'], default: 'high' },
+  }
+
+  it('fetches the endpoint catalog at mount and serves it to selectors', async () => {
+    vi.stubGlobal('fetch', ollamaEndpoint({ listing: ['brand-new'], shows: { 'brand-new': SHOW_NEW } }))
+    const { ctx, captured } = fakeContext({})
+    apply(ctx, liveConfig({ autoRefresh: true }).config)
+    const adapter = captured.adapters[0]?.adapter as OllamaCloudAdapter
+
+    await vi.waitFor(async () => {
+      expect((await adapter.listModels(PROVIDER)).map((model) => model.id)).toEqual(['brand-new'])
+    })
+    const resolved = await adapter.resolveModel(PROVIDER, 'brand-new')
+    expect(resolved.reasoning?.efforts.map((effort) => effort.id)).toEqual(['off', 'high'])
+    expect(resolved.reasoning?.defaultEffort).toBe('high')
+    expect(ctx.logger.warn).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps the shipped catalog and warns when the endpoint refuses the listing', async () => {
+    vi.stubGlobal('fetch', (async () => new Response('{}', { status: 401 })) as unknown as typeof fetch)
+    const { ctx, captured } = fakeContext({})
+    apply(ctx, liveConfig({ autoRefresh: true }).config)
+    const adapter = captured.adapters[0]?.adapter as OllamaCloudAdapter
+
+    await vi.waitFor(() => {
+      expect(ctx.logger.warn).toHaveBeenCalledWith(expect.stringMatching(/catalog refresh failed/u))
+    })
+    expect(await adapter.listModels(PROVIDER)).toHaveLength(DEFAULT_MODELS.length)
+    vi.unstubAllGlobals()
+  })
+
+  it('leaves the network alone when automatic refresh is off', async () => {
+    const route = vi.fn(async () => new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', route as unknown as typeof fetch)
+    const { ctx, captured } = fakeContext({})
+
+    apply(ctx, liveConfig({ autoRefresh: false }).config)
+    const adapter = captured.adapters[0]?.adapter as OllamaCloudAdapter
+    await adapter.listModels(PROVIDER)
+
+    expect(route).not.toHaveBeenCalled()
+    expect(captured.effects).toEqual([])
+    vi.unstubAllGlobals()
+  })
+
+  it('refreshes again on the configured interval', async () => {
+    vi.useFakeTimers()
+    const urls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      ollamaEndpoint({ listing: ['brand-new'], shows: { 'brand-new': SHOW_NEW }, onCall: (url) => urls.push(url) }),
+    )
+    const { ctx, captured } = fakeContext({ captureEffects: true })
+
+    apply(ctx, liveConfig({ autoRefresh: true, refreshMinutes: 60 }).config)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(urls.filter((url) => url.endsWith('/tags'))).toHaveLength(1)
+
+    const timer = captured.effects.find((effect) => effect.label?.includes('catalog refresh') === true)
+    expect(timer).toBeDefined()
+    const dispose = timer?.run()
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(urls.filter((url) => url.endsWith('/tags'))).toHaveLength(2)
+
+    if (typeof dispose === 'function') dispose()
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(urls.filter((url) => url.endsWith('/tags'))).toHaveLength(2)
+
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('configures the refresh on by default, once a day', () => {
+    const resolved = (Config as unknown as (value: unknown) => {
+      autoRefresh: { get(): unknown }
+      refreshMinutes: { get(): unknown }
+    })({})
+    expect(resolved.autoRefresh.get()).toBe(true)
+    expect(resolved.refreshMinutes.get()).toBe(DEFAULT_REFRESH_MINUTES)
   })
 })

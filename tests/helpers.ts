@@ -46,11 +46,20 @@ export function ref<T>(value: T) {
   } satisfies Volatile<T> & { set(next: T): void }
 }
 
-/** Live plugin configuration wired to controllable references. */
+/**
+ * Live plugin configuration wired to controllable references.
+ *
+ * The catalog refresh defaults to *off* here: a unit test that mounted the
+ * plugin would otherwise reach the network on every `apply()`. The production
+ * defaults live in the configuration schema and are pinned by their own test;
+ * a test that exercises the refresh asks for it explicitly.
+ */
 export function liveConfig(overrides: {
   apiKeyEnv?: string
   baseURL?: string
   models?: readonly ConfiguredModelEntry[]
+  autoRefresh?: boolean
+  refreshMinutes?: number
 } = {}) {
   const references = {
     apiKeyEnv: ref(overrides.apiKeyEnv ?? 'OLLAMA_API_KEY'),
@@ -60,6 +69,8 @@ export function liveConfig(overrides: {
     defaultContextWindow: ref(262144),
     streamIdleTimeoutMs: ref(300000),
     requestTimeoutMs: ref(15000),
+    autoRefresh: ref(overrides.autoRefresh ?? false),
+    refreshMinutes: ref(overrides.refreshMinutes ?? 0),
   }
   return { config: references as unknown as Config, references }
 }
@@ -71,6 +82,39 @@ export interface CapturedRegistrations {
   discovery: Array<{ settingsNs: string; discover: unknown }>
   web: { search: string[]; fetch: string[] }
   rpc: Array<{ channel: string; handler: unknown }>
+  /** Effect bodies captured instead of run, when `captureEffects` is set. */
+  effects: Array<{ label: string | undefined; run: () => unknown }>
+}
+
+/** A JSON response for a stubbed `fetch`. */
+export function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+}
+
+/**
+ * A `fetch` stub answering one Ollama endpoint's native surface the way the
+ * host does: `GET /tags` lists ids, `POST /show` describes one model. An id
+ * whose `shows` value is `undefined` answers 410, i.e. the listing still names
+ * it while the detail request refuses it.
+ */
+export function ollamaEndpoint(options: {
+  listing: readonly string[]
+  shows?: Record<string, unknown | undefined>
+  onCall?: (url: string, init?: RequestInit) => void
+}): typeof fetch {
+  return (async (url: string | URL, init?: RequestInit) => {
+    const target = String(url)
+    options.onCall?.(target, init)
+    if (target.endsWith('/tags')) {
+      return jsonResponse({ models: options.listing.map((name) => ({ name, model: name })) })
+    }
+    if (target.endsWith('/show')) {
+      const body = JSON.parse(String(init?.body)) as { model: string }
+      const show = options.shows?.[body.model]
+      return show === undefined ? jsonResponse({ error: 'not found' }, 404) : jsonResponse(show)
+    }
+    throw new Error(`unexpected url ${target}`)
+  }) as unknown as typeof fetch
 }
 
 /** Minimal credential service shape the resolver reads. */
@@ -96,6 +140,11 @@ export function fakeContext(options: {
   includeConnection?: boolean
   /** Simulate a connection service whose channel registration throws. */
   connectionHandleThrows?: boolean
+  /**
+   * Capture effect bodies instead of running them, so a test can arm a
+   * scheduled effect (the catalog refresh timer) and unwind it deliberately.
+   */
+  captureEffects?: boolean
 } = {}) {
   const captured: CapturedRegistrations = {
     adapters: [],
@@ -103,8 +152,13 @@ export function fakeContext(options: {
     discovery: [],
     web: { search: [], fetch: [] },
     rpc: [],
+    effects: [],
   }
-  const effect = (callback: () => unknown) => {
+  const effect = (callback: () => unknown, label?: string) => {
+    if (options.captureEffects === true) {
+      captured.effects.push({ label, run: callback })
+      return () => {}
+    }
     const disposer = callback()
     return typeof disposer === 'function' ? disposer() : disposer
   }
