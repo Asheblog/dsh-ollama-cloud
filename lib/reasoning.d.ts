@@ -61,6 +61,18 @@ export declare function offeredLevels(efforts: PinnedEfforts): ThinkingLevel[];
  */
 export declare function offeredEffortMap(efforts: PinnedEfforts): Partial<Record<ThinkingLevel, string>>;
 /**
+ * Whether a declared level set offers anything beyond `off`.
+ *
+ * This is the one rule a usable effort declaration must satisfy, wherever it
+ * comes from: configuration (`config.ts` rejects the violation with the model
+ * id), or a cache file (`catalog-cache.ts` discards the document). An
+ * `off`-only declaration would give a selector a control that changes nothing.
+ *
+ * @param offered - levels an entry declares, with their wire spellings.
+ * @returns `true` when at least one level turns thinking on.
+ */
+export declare function offersThinking(offered: Partial<Record<ThinkingLevel, string>>): boolean;
+/**
  * Translate one model's raw `thinking` metadata into a reasoning policy.
  *
  * `false` maps to the `off` level (wire `none`), `true` maps to a single

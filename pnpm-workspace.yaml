@@ -16,6 +16,7 @@ minimumReleaseAgeExclude:
   - '@deepseek-ai/dsh-brand@0.2.0-rc.2'
   - '@deepseek-ai/dsh-credentials@0.2.0-rc.2'
   - '@deepseek-ai/dsh-fs@0.2.0-rc.2'
+  - '@deepseek-ai/dsh-home-paths@0.2.0-rc.2'
   - '@deepseek-ai/dsh-invariants@0.2.0-rc.2'
   - '@deepseek-ai/dsh-launch-environment@0.2.0-rc.2'
   - '@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2'

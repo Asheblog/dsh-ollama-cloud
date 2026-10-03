@@ -96,6 +96,21 @@ export function offeredEffortMap(efforts: PinnedEfforts): Partial<Record<Thinkin
   return offered
 }
 
+/**
+ * Whether a declared level set offers anything beyond `off`.
+ *
+ * This is the one rule a usable effort declaration must satisfy, wherever it
+ * comes from: configuration (`config.ts` rejects the violation with the model
+ * id), or a cache file (`catalog-cache.ts` discards the document). An
+ * `off`-only declaration would give a selector a control that changes nothing.
+ *
+ * @param offered - levels an entry declares, with their wire spellings.
+ * @returns `true` when at least one level turns thinking on.
+ */
+export function offersThinking(offered: Partial<Record<ThinkingLevel, string>>): boolean {
+  return Object.keys(offered).some((level) => level !== 'off')
+}
+
 /** Shape-check one raw `thinking` object from `/api/show`. */
 function readThinking(thinking: unknown): { values: unknown[]; default: unknown } | undefined {
   if (thinking === null || typeof thinking !== 'object') return undefined

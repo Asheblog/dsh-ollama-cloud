@@ -26,6 +26,11 @@ The prior art (`dsh-llm-ollama`) already registers a route named
   ids, with Ollama's own spelling carried as the wire value. A model whose
   metadata is boolean offers `off` + `high`; a level the metadata never
   reported is never offered.
+  *Amended by [ADR 0005](0005-live-endpoint-catalog.md)*: "never reported" now
+  has one bounded exception — a model `/api/tags` lists that `/api/show` could
+  not describe keeps the standard ladder, because the endpoint asserted the
+  model exists and asserted nothing about its levels. Every level an endpoint
+  *does* report is still the only set offered.
 
 ## Consequences
 

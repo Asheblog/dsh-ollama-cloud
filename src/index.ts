@@ -30,6 +30,7 @@ import { reportAlignment } from './alignment.js'
 import {
   createConnectionReader,
   DISPLAY_NAME,
+  IDLE_REFRESH_WATCH_MS,
   PLUGIN_NAME,
   PROVIDER,
   type Config as ConfigShape,
@@ -53,6 +54,7 @@ export {
   DEFAULT_STREAM_IDLE_TIMEOUT_MS,
   DEFAULT_REQUEST_TIMEOUT_MS,
   DISPLAY_NAME,
+  IDLE_REFRESH_WATCH_MS,
   nativeAPIBaseURL,
   openAICompatibleBaseURL,
   PROVIDER,
@@ -65,9 +67,9 @@ export { DEFAULT_MODELS, mergeCatalogEntry, mergeLiveCatalog } from './catalog.j
 export { plainOptions } from './config.js'
 export type { CatalogSource, OllamaModelEntry } from './catalog.js'
 export { DEFAULT_DISCOVERY_TIMEOUT_MS, discoverCatalog, discoverModels, nativeBaseFrom } from './discovery.js'
-export type { DiscoveredCatalog } from './discovery.js'
+export type { DiscoveredCatalog, DiscoveryDeps, DiscoveryTarget } from './discovery.js'
 export { createLiveCatalog } from './live-catalog.js'
-export type { CachedCatalog, LiveCatalog, LiveCatalogOptions, LiveCatalogRefresh, LiveCatalogTarget } from './live-catalog.js'
+export type { CachedCatalog, LiveCatalog, LiveCatalogOptions, LiveCatalogRefresh } from './live-catalog.js'
 export {
   CATALOG_CACHE_FILE,
   CATALOG_CACHE_VERSION,
@@ -108,6 +110,9 @@ export { MAX_SEARCH_RESULTS, OLLAMA_WEB_PROVIDER_ID, OllamaWebFetchProvider, Oll
 
 /** Loader row name; also the plugin's settings namespace fallback. */
 export const name = PLUGIN_NAME
+
+/** Which pass asked for a catalog refresh; it names the log line. */
+export type CatalogRefreshReason = 'mount' | 'interval'
 
 /** The route lives on the LLM seam. */
 export const inject = ['llm']
@@ -186,14 +191,14 @@ export function apply(ctx: Context, config: ConfigShape): void {
    * exactly as it was, and the next pass (or the next boot) tries again.
    */
   let refreshing = false
-  const refreshCatalog = async (reason: string): Promise<void> => {
+  const refreshCatalog = async (reason: CatalogRefreshReason): Promise<void> => {
     if (refreshing) return
     refreshing = true
     try {
       const facts = connection()
       const apiKey = await storedKey(facts)
       const result = await catalog.refresh({
-        endpoint: facts.nativeBaseURL,
+        baseURL: facts.nativeBaseURL,
         ...apiKey === undefined ? {} : { apiKey },
         requestTimeoutMs: facts.requestTimeoutMs,
       })
@@ -313,20 +318,25 @@ export function apply(ctx: Context, config: ConfigShape): void {
     void refreshCatalog('mount')
   }
 
-  // The interval re-reads the live configuration on every pass, so switching
-  // the refresh off — or to another interval — takes effect at the next tick
-  // instead of requiring a reload.
+  // The scheduler re-reads the live configuration twice per pass — once to
+  // decide how long to wait, once when the timer fires to decide what that
+  // pass does — so a change never has to survive a whole interval, and
+  // switching the refresh off takes effect at the next tick instead of
+  // requiring a reload. While it is off (or mount-only) the chain keeps
+  // ticking on the idle cadence without touching the network, which is what
+  // makes switching it back on work the same way.
   ctx.effect(() => {
     let stopped = false
     let timer: ReturnType<typeof setTimeout> | undefined
+    /** Minutes to schedule: `0` means this pass must not fetch. */
+    const intervalMinutes = (): number => (config.autoRefresh.get() ? config.refreshMinutes.get() : 0)
     const arm = (): void => {
-      if (stopped || !config.autoRefresh.get()) return
-      const minutes = config.refreshMinutes.get()
-      if (!(minutes > 0)) return
+      if (stopped) return
+      const scheduled = intervalMinutes()
       timer = setTimeout(() => {
-        void refreshCatalog('interval')
+        if (intervalMinutes() > 0) void refreshCatalog('interval')
         arm()
-      }, minutes * 60_000)
+      }, scheduled > 0 ? scheduled * 60_000 : IDLE_REFRESH_WATCH_MS)
       timer.unref?.()
     }
     arm()

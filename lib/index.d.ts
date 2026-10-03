@@ -20,7 +20,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { type Config as ConfigShape, type ConnectionOptions } from './config.js';
 import { type ResolveCredential } from './credentials.js';
 export { OllamaCloudAdapter } from './adapter.js';
-export { Config, createConnectionReader, DEFAULT_API_KEY_ENV, DEFAULT_BASE_URL, DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, DEFAULT_REFRESH_MINUTES, DEFAULT_STREAM_IDLE_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS, DISPLAY_NAME, nativeAPIBaseURL, openAICompatibleBaseURL, PROVIDER, resolveConnection, } from './config.js';
+export { Config, createConnectionReader, DEFAULT_API_KEY_ENV, DEFAULT_BASE_URL, DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, DEFAULT_REFRESH_MINUTES, DEFAULT_STREAM_IDLE_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS, DISPLAY_NAME, IDLE_REFRESH_WATCH_MS, nativeAPIBaseURL, openAICompatibleBaseURL, PROVIDER, resolveConnection, } from './config.js';
 export { createCredentialResolver } from './credentials.js';
 export type { ResolveCredential } from './credentials.js';
 export type { Config as ConfigShape, ConfiguredModelEntry, ConnectionOptions, Options, ResolvedModel } from './config.js';
@@ -28,9 +28,9 @@ export { DEFAULT_MODELS, mergeCatalogEntry, mergeLiveCatalog } from './catalog.j
 export { plainOptions } from './config.js';
 export type { CatalogSource, OllamaModelEntry } from './catalog.js';
 export { DEFAULT_DISCOVERY_TIMEOUT_MS, discoverCatalog, discoverModels, nativeBaseFrom } from './discovery.js';
-export type { DiscoveredCatalog } from './discovery.js';
+export type { DiscoveredCatalog, DiscoveryDeps, DiscoveryTarget } from './discovery.js';
 export { createLiveCatalog } from './live-catalog.js';
-export type { CachedCatalog, LiveCatalog, LiveCatalogOptions, LiveCatalogRefresh, LiveCatalogTarget } from './live-catalog.js';
+export type { CachedCatalog, LiveCatalog, LiveCatalogOptions, LiveCatalogRefresh } from './live-catalog.js';
 export { CATALOG_CACHE_FILE, CATALOG_CACHE_VERSION, defaultCatalogCachePath, readCatalogCache, writeCatalogCache, } from './catalog-cache.js';
 export type { CacheWriteResult, CatalogCacheSnapshot } from './catalog-cache.js';
 export { CREDENTIAL_SET_ENDPOINT, CREDENTIAL_STATUS_ENDPOINT, createUsageRpcHandler, USAGE_ENDPOINT, USAGE_RPC_CHANNEL, } from './rpc.js';
@@ -44,6 +44,8 @@ export { createOllamaCloudAuth, createPiAiProfile, toPiAiModel } from './profile
 export { MAX_SEARCH_RESULTS, OLLAMA_WEB_PROVIDER_ID, OllamaWebFetchProvider, OllamaWebSearchProvider } from './web.js';
 /** Loader row name; also the plugin's settings namespace fallback. */
 export declare const name = "llm-ollama-cloud";
+/** Which pass asked for a catalog refresh; it names the log line. */
+export type CatalogRefreshReason = 'mount' | 'interval';
 /** The route lives on the LLM seam. */
 export declare const inject: string[];
 /** Default settings namespace when the loader does not supply an entry id. */

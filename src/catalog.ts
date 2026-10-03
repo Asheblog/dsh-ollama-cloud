@@ -58,6 +58,7 @@ export interface CatalogSource {
    * memoized connection, which is how a catalog adopted mid-session reaches
    * the route without a reload; an unchanged value means the memoized facts
    * still hold.
+   * @returns the current generation's identity.
    */
   revision(): unknown
   /**

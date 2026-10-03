@@ -42,8 +42,9 @@ fails a `/api/show`.
    is not awaited at mount (a slow endpoint must not hold up a boot), it is
    throttled so two passes cannot overlap, and a failure is logged and leaves
    the catalog in use exactly as it was. `autoRefresh` (default `true`) and
-   `refreshMinutes` (default `1440`) control it, and the timer re-reads the live
-   configuration on every pass.
+   `refreshMinutes` (default `1440`) control it, and the scheduler re-reads both
+   on every tick — including the idle tick that runs while the refresh is off,
+   which touches no network and exists so switching it back on needs no reload.
 2. **The catalog is layered, and each layer answers only what it knows.**
 
    | Layer | Authority |
@@ -70,12 +71,14 @@ fails a `/api/show`.
    it is not a state the UI can recover from, and "everything retired at once"
    is a far less likely explanation than a gateway hiccup.
 4. **The cache is what makes a restart — and an offline boot — honest.** It
-   lives under the harness home (`<DSH home>/cache/dsh-ollama-cloud/catalog.json`),
-   not in the installed package, so reinstalling or updating the plugin keeps
-   it; it is written atomically (temporary file plus rename) and validated
-   whole on read (a malformed entry discards the file rather than serving a
-   partially trusted catalog). One endpoint at a time: a catalog fetched from
-   another `baseURL` is ignored rather than merged.
+   lives under the harness home, resolved through the harness's own
+   `@deepseek-ai/dsh-home-paths` helper (`<harness home>/cache/dsh-ollama-cloud/catalog.json`),
+   so it agrees with every other piece of harness user data about where user
+   data lives and is not lost when the package is reinstalled or updated; it is
+   written atomically (temporary file plus rename) and validated whole on read
+   (a malformed entry discards the file rather than serving a partially trusted
+   catalog). One endpoint at a time: a catalog fetched from another `baseURL` is
+   ignored rather than merged.
 5. **Adoption reaches the running session through the revision, not a reload.**
    `CatalogSource.revision()` joins the volatile references the connection
    reader memoizes on (`createConnectionReader`), so adopting a changed catalog
@@ -106,8 +109,16 @@ listing plus one per model, and "current as of this boot" is the whole promise.
   correctness surface, so a stale snapshot is a cosmetic issue rather than a
   routing one.
 - Two new configuration fields, both read live. Setting `autoRefresh: false`
-  reproduces the pre-`0.3.0` behavior exactly (cache, then snapshot), which is
-  also the honest story for an air-gapped or rate-limited deployment.
+  stops every network refresh: the route then serves the cache of the last
+  fetch (or the shipped snapshot before any fetch), and the scheduler's only
+  remaining work is re-reading these two values on an idle cadence so switching
+  the refresh back on is honored without a reload. That is the honest setting
+  for an air-gapped or quota-limited deployment.
+- The cache holds one endpoint at a time *per harness home*. Two profiles
+  sharing a home but pointed at different endpoints each fall back to the
+  shipped snapshot for the first second of a boot, until their own mount
+  refresh lands; nothing is corrupted, because the endpoint validates on read
+  and the refresh overwrites it either way.
 - The cache is per-harness-home and per-endpoint; a user who switches `baseURL`
   serves the snapshot until the new endpoint answers. That is deliberate — a
   merged catalog across two endpoints would offer models the configured endpoint

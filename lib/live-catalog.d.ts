@@ -26,16 +26,7 @@
  */
 import { type CatalogSource } from './catalog.js';
 import { type CacheWriteResult } from './catalog-cache.js';
-import { type DiscoveryDeps } from './discovery.js';
-/** One endpoint, credential, and budget a refresh interrogates. */
-export interface LiveCatalogTarget {
-    /** Native API base the endpoint answers discovery on. */
-    readonly endpoint: string;
-    /** Credential for this pass; the public cloud serves metadata anonymously. */
-    readonly apiKey?: string;
-    /** Per-request budget; falls back to the discovery default. */
-    readonly requestTimeoutMs?: number;
-}
+import { type DiscoveryDeps, type DiscoveryTarget } from './discovery.js';
 /** What one refresh did, for the caller's log line. */
 export interface LiveCatalogRefresh {
     /** Models the endpoint listed. */
@@ -73,11 +64,12 @@ export interface LiveCatalog extends CatalogSource {
      * a half-answered one. An empty listing is refused for the same reason —
      * membership shrinks by retirement, it does not disappear.
      *
-     * @param target - endpoint, credential, and per-request budget.
+     * @param target - the endpoint, credential, and per-request budget, exactly
+     *   what the discovery surface interrogates.
      * @param signal - caller cancellation.
      * @returns what the pass did.
      */
-    refresh(target: LiveCatalogTarget, signal?: AbortSignal): Promise<LiveCatalogRefresh>;
+    refresh(target: DiscoveryTarget, signal?: AbortSignal): Promise<LiveCatalogRefresh>;
     /** The cached snapshot in use, or `undefined` when nothing was cached yet. */
     cached(): CachedCatalog | undefined;
 }

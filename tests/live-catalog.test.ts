@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { readCatalogCache, writeCatalogCache, type CatalogCacheSnapshot } from '../src/catalog-cache.js'
-import { DEFAULT_MODELS, mergeCatalogEntry, mergeLiveCatalog, type OllamaModelEntry } from '../src/catalog.js'
 import { createLiveCatalog } from '../src/live-catalog.js'
 import { jsonResponse, ollamaEndpoint } from './helpers.js'
 
@@ -21,74 +20,6 @@ const SHOW_NEW = {
   capabilities: ['completion', 'tools'],
   model_info: { 'brand_new.context_length': 131072 },
 }
-
-describe('mergeCatalogEntry', () => {
-  const shipped: OllamaModelEntry = {
-    id: 'glm-5.3',
-    name: 'GLM-5.3',
-    contextWindow: 1048576,
-    reasoningEfforts: { low: 'low', high: 'high', max: 'max' },
-    defaultEffort: 'max',
-  }
-
-  it('keeps the endpoint answer with the shipped display name', () => {
-    const merged = mergeCatalogEntry(
-      { id: 'glm-5.3', contextWindow: 1048576, reasoningEfforts: { low: 'low', high: 'high', max: 'max' }, defaultEffort: 'max' },
-      shipped,
-    )
-    expect(merged).toEqual(shipped)
-  })
-
-  it('drops an inherited default when the endpoint re-declares the ladder without one', () => {
-    const merged = mergeCatalogEntry(
-      { id: 'glm-5.3', reasoningEfforts: { low: 'low', high: 'high' } },
-      shipped,
-    )
-    expect(merged.reasoningEfforts).toEqual({ low: 'low', high: 'high' })
-    expect(merged.defaultEffort).toBeUndefined()
-    expect(merged.name).toBe('GLM-5.3')
-    expect(merged.contextWindow).toBe(1048576)
-  })
-
-  it('inherits the shipped ladder when the endpoint said nothing about thinking', () => {
-    const merged = mergeCatalogEntry({ id: 'glm-5.3' }, shipped)
-    expect(merged).toEqual(shipped)
-  })
-
-  it('keeps an explicit non-reasoning answer', () => {
-    const merged = mergeCatalogEntry(
-      { id: 'mistral-large-3:675b', reasoningEfforts: false },
-      { id: 'mistral-large-3:675b', name: 'Mistral Large 3 675B', vision: true, reasoningEfforts: false },
-    )
-    expect(merged).toEqual({
-      id: 'mistral-large-3:675b',
-      name: 'Mistral Large 3 675B',
-      vision: true,
-      reasoningEfforts: false,
-    })
-  })
-
-  it('leaves a model the snapshot never shipped to its id, the entry id fallback', () => {
-    expect(mergeCatalogEntry({ id: 'brand-new', vision: true })).toEqual({ id: 'brand-new', vision: true })
-  })
-})
-
-describe('mergeLiveCatalog', () => {
-  it('keeps only what the endpoint still lists, in listing order', () => {
-    const merged = mergeLiveCatalog(
-      [{ id: 'kimi-k3' }, { id: 'brand-new' }],
-      [{ id: 'kimi-k3', name: 'Kimi K3' }, { id: 'retired-model', name: 'Retired' }],
-    )
-    expect(merged.map((model) => model.id)).toEqual(['kimi-k3', 'brand-new'])
-    expect(merged[0]?.name).toBe('Kimi K3')
-    expect(merged[1]?.name).toBeUndefined()
-  })
-
-  it('defaults to the shipped snapshot as the fallback layer', () => {
-    const merged = mergeLiveCatalog(DEFAULT_MODELS.map((model) => ({ id: model.id })))
-    expect(merged.map((model) => model.name)).toEqual(DEFAULT_MODELS.map((model) => model.name))
-  })
-})
 
 /** A cache file holding the previous session's fetch. */
 function cachedFile(snapshot: CatalogCacheSnapshot): string {
@@ -131,7 +62,7 @@ describe('createLiveCatalog', () => {
     const catalog = createLiveCatalog({ cachePath: path, deps: { fetch: route } })
     const before = catalog.revision()
 
-    const result = await catalog.refresh({ endpoint: ENDPOINT, apiKey: 'secret' })
+    const result = await catalog.refresh({ baseURL: ENDPOINT, apiKey: 'secret' })
 
     expect(result).toEqual({ models: 2, described: 2, changed: true, cache: { ok: true } })
     expect(catalog.revision()).not.toBe(before)
@@ -163,9 +94,9 @@ describe('createLiveCatalog', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'ollama-cloud-live-')), 'catalog.json')
     const catalog = createLiveCatalog({ cachePath: path, deps: { fetch: route } })
 
-    await catalog.refresh({ endpoint: ENDPOINT })
+    await catalog.refresh({ baseURL: ENDPOINT })
     const settled = catalog.revision()
-    const second = await catalog.refresh({ endpoint: ENDPOINT })
+    const second = await catalog.refresh({ baseURL: ENDPOINT })
 
     expect(second.changed).toBe(false)
     expect(catalog.revision()).toBe(settled)
@@ -174,7 +105,7 @@ describe('createLiveCatalog', () => {
   it('keeps the last good catalog when a refresh fails', async () => {
     const path = join(mkdtempSync(join(tmpdir(), 'ollama-cloud-live-')), 'catalog.json')
     const catalog = createLiveCatalog({ cachePath: path, deps: { fetch: route } })
-    await catalog.refresh({ endpoint: ENDPOINT })
+    await catalog.refresh({ baseURL: ENDPOINT })
     const settled = catalog.revision()
     const listed = catalog.modelsFor(ENDPOINT)
 
@@ -182,7 +113,7 @@ describe('createLiveCatalog', () => {
       cachePath: path,
       deps: { fetch: (async () => jsonResponse({ error: 'Unauthorized' }, 401)) as unknown as typeof fetch },
     })
-    await expect(failing.refresh({ endpoint: ENDPOINT })).rejects.toThrow(/401/u)
+    await expect(failing.refresh({ baseURL: ENDPOINT })).rejects.toThrow(/401/u)
 
     expect(catalog.revision()).toBe(settled)
     expect(catalog.modelsFor(ENDPOINT)).toBe(listed)
@@ -197,7 +128,7 @@ describe('createLiveCatalog', () => {
     })
     const catalog = createLiveCatalog({ cachePath: path, deps: { fetch: retired } })
 
-    const result = await catalog.refresh({ endpoint: ENDPOINT })
+    const result = await catalog.refresh({ baseURL: ENDPOINT })
 
     expect(result).toEqual({ models: 1, described: 1, changed: true, cache: { ok: true } })
     expect(catalog.modelsFor(ENDPOINT)?.map((model) => model.id)).toEqual(['deepseek-v4.1-flash'])
@@ -207,13 +138,13 @@ describe('createLiveCatalog', () => {
   it('refuses to adopt an empty listing, because a model picker with nothing in it is not recoverable', async () => {
     const path = join(mkdtempSync(join(tmpdir(), 'ollama-cloud-live-')), 'catalog.json')
     const catalog = createLiveCatalog({ cachePath: path, deps: { fetch: route } })
-    await catalog.refresh({ endpoint: ENDPOINT })
+    await catalog.refresh({ baseURL: ENDPOINT })
 
     const empty = createLiveCatalog({
       cachePath: path,
       deps: { fetch: ollamaEndpoint({ listing: [] }) },
     })
-    await expect(empty.refresh({ endpoint: ENDPOINT })).rejects.toThrow(/listed no models/u)
+    await expect(empty.refresh({ baseURL: ENDPOINT })).rejects.toThrow(/listed no models/u)
     // The cache written by the earlier pass keeps serving for that endpoint.
     expect(empty.modelsFor(ENDPOINT)?.map((model) => model.id)).toEqual(['deepseek-v4.1-flash', 'brand-new'])
   })

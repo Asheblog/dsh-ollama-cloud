@@ -33,17 +33,7 @@ import {
   type CacheWriteResult,
   type CatalogCacheSnapshot,
 } from './catalog-cache.js'
-import { discoverCatalog, type DiscoveryDeps } from './discovery.js'
-
-/** One endpoint, credential, and budget a refresh interrogates. */
-export interface LiveCatalogTarget {
-  /** Native API base the endpoint answers discovery on. */
-  readonly endpoint: string
-  /** Credential for this pass; the public cloud serves metadata anonymously. */
-  readonly apiKey?: string
-  /** Per-request budget; falls back to the discovery default. */
-  readonly requestTimeoutMs?: number
-}
+import { discoverCatalog, type DiscoveryDeps, type DiscoveryTarget } from './discovery.js'
 
 /** What one refresh did, for the caller's log line. */
 export interface LiveCatalogRefresh {
@@ -85,11 +75,12 @@ export interface LiveCatalog extends CatalogSource {
    * a half-answered one. An empty listing is refused for the same reason —
    * membership shrinks by retirement, it does not disappear.
    *
-   * @param target - endpoint, credential, and per-request budget.
+   * @param target - the endpoint, credential, and per-request budget, exactly
+   *   what the discovery surface interrogates.
    * @param signal - caller cancellation.
    * @returns what the pass did.
    */
-  refresh(target: LiveCatalogTarget, signal?: AbortSignal): Promise<LiveCatalogRefresh>
+  refresh(target: DiscoveryTarget, signal?: AbortSignal): Promise<LiveCatalogRefresh>
   /** The cached snapshot in use, or `undefined` when nothing was cached yet. */
   cached(): CachedCatalog | undefined
 }
@@ -118,25 +109,18 @@ export function createLiveCatalog(options: LiveCatalogOptions): LiveCatalog {
       ? undefined
       : { endpoint: snapshot.endpoint, fetchedAt: snapshot.fetchedAt, models: snapshot.models.length },
     async refresh(target, signal) {
-      const { entries, described } = await discoverCatalog(
-        {
-          baseURL: target.endpoint,
-          ...target.apiKey === undefined ? {} : { apiKey: target.apiKey },
-          ...target.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: target.requestTimeoutMs },
-        },
-        options.deps,
-        signal,
-      )
+      const { entries, described } = await discoverCatalog(target, options.deps, signal)
+      const endpoint = target.baseURL.replace(/\/+$/, '')
       // An empty listing is a hiccup, not a catalog: adopting it would blank
       // the model picker with nothing to recover from, so the previous catalog
       // keeps serving and the next pass can succeed.
       if (entries.length === 0) {
-        throw new Error(`ollama-cloud: ${target.endpoint} listed no models`)
+        throw new Error(`ollama-cloud: ${endpoint} listed no models`)
       }
 
       const next = mergeLiveCatalog(entries)
       const changed = JSON.stringify(next) !== JSON.stringify(effective)
-      snapshot = { endpoint: target.endpoint, fetchedAt: Date.now(), models: entries }
+      snapshot = { endpoint, fetchedAt: Date.now(), models: entries }
       effective = next
       // The revision is the catalog's identity, not the fetch's: a pass that
       // confirmed the catalog must not rebuild every adapter for nothing.

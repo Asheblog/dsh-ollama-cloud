@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { OllamaCloudAdapter } from '../src/adapter.js'
 import { DEFAULT_MODELS } from '../src/catalog.js'
-import { Config, DEFAULT_REFRESH_MINUTES, resolveConnection } from '../src/config.js'
+import { Config, DEFAULT_REFRESH_MINUTES, IDLE_REFRESH_WATCH_MS, resolveConnection } from '../src/config.js'
 import { createCredentialResolver } from '../src/credentials.js'
 import { nativeBaseFrom } from '../src/discovery.js'
 import {
@@ -332,6 +332,33 @@ describe('automatic catalog refresh', () => {
     await vi.advanceTimersByTimeAsync(60 * 60_000)
     expect(urls.filter((url) => url.endsWith('/tags'))).toHaveLength(2)
 
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('honors the refresh being switched back on, without a reload', async () => {
+    vi.useFakeTimers()
+    const urls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      ollamaEndpoint({ listing: ['brand-new'], shows: { 'brand-new': SHOW_NEW }, onCall: (url) => urls.push(url) }),
+    )
+    const { ctx, captured } = fakeContext({ captureEffects: true })
+    const { config, references } = liveConfig({ autoRefresh: false, refreshMinutes: 60 })
+
+    apply(ctx, config)
+    const timer = captured.effects.find((effect) => effect.label?.includes('catalog refresh') === true)
+    const dispose = timer?.run()
+
+    // Off: the idle cadence ticks without fetching.
+    await vi.advanceTimersByTimeAsync(IDLE_REFRESH_WATCH_MS)
+    expect(urls).toEqual([])
+
+    references.autoRefresh.set(true)
+    await vi.advanceTimersByTimeAsync(IDLE_REFRESH_WATCH_MS)
+    expect(urls.filter((url) => url.endsWith('/tags')).length).toBeGreaterThan(0)
+
+    if (typeof dispose === 'function') dispose()
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })

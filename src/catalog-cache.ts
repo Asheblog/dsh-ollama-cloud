@@ -18,11 +18,12 @@
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import os from 'node:os'
+import { dirname } from 'node:path'
+
+import { dshCachePath } from '@deepseek-ai/dsh-home-paths'
 
 import type { OllamaModelEntry } from './catalog.js'
-import { THINKING_LEVELS, type ThinkingLevel } from './reasoning.js'
+import { offersThinking, THINKING_LEVELS, type ThinkingLevel } from './reasoning.js'
 
 /** File-format generation; a document from another generation is ignored. */
 export const CATALOG_CACHE_VERSION = 1
@@ -57,11 +58,16 @@ type MutableEntry = { -readonly [K in keyof OllamaModelEntry]: OllamaModelEntry[
 
 /**
  * The cache file this plugin uses by default.
- * @returns `<DSH home>/cache/dsh-ollama-cloud/catalog.json`.
+ *
+ * The path comes from the harness's own home resolution
+ * (`@deepseek-ai/dsh-home-paths`: an explicitly configured home, then
+ * `$DSH_HOME`, then `~/.dsh`), so this plugin's cache lives under the same root
+ * as every other piece of harness user data instead of guessing at it.
+ *
+ * @returns `<harness home>/cache/dsh-ollama-cloud/catalog.json`.
  */
 export function defaultCatalogCachePath(): string {
-  const home = process.env.DSH_HOME?.trim() || join(os.homedir(), '.dsh')
-  return join(home, 'cache', 'dsh-ollama-cloud', CATALOG_CACHE_FILE)
+  return dshCachePath('dsh-ollama-cloud', CATALOG_CACHE_FILE)
 }
 
 /** Read a positive integer field, `undefined` when absent and `false` when unusable. */
@@ -91,7 +97,7 @@ function readEfforts(
     offered[level as ThinkingLevel] = wire
   }
   // An `off`-only declaration is not a usable offer (nothing turns thinking on).
-  if (!Object.keys(offered).some((level) => level !== 'off')) return { ok: false }
+  if (!offersThinking(offered)) return { ok: false }
   return { ok: true, value: offered }
 }
 

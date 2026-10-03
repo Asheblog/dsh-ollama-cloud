@@ -81,10 +81,10 @@ Models whose metadata is a boolean switch (`kimi-k2.6`, `gemma4:31b`, …) expos
 On by default, and nothing about it blocks a boot:
 
 - **At mount** — one refresh as soon as the route is up. The model list is already correct before it lands, because the cache below answers first.
-- **On an interval** — `refreshMinutes` later (default `1440`, i.e. daily), and again after each pass. The tick re-reads the live configuration, so turning the refresh off or changing the interval applies at the next pass instead of requiring a reload.
-- **The cache** — `<DSH home>/cache/dsh-ollama-cloud/catalog.json`: written atomically, validated on read, ignored when it is malformed or belongs to another endpoint. It lives outside the installed package, so updating the plugin keeps it, and it is what an offline restart — or any restart's first second — is served from.
+- **On an interval** — `refreshMinutes` later (default `1440`, i.e. daily), and again after each pass. Every pass re-reads the live configuration, so switching the refresh off or changing the interval applies at the next tick instead of requiring a reload; while it is off (or mount-only) the scheduler still ticks every few minutes without touching the network, so switching it back on is honored the same way.
+- **The cache** — `<harness home>/cache/dsh-ollama-cloud/catalog.json`, resolved through the harness's own home helper: written atomically, validated on read, ignored when it is malformed or belongs to another endpoint. It lives outside the installed package, so updating the plugin keeps it, and it is what an offline restart — or any restart's first second — is served from.
 
-Turn the whole thing off with `autoRefresh: false` (the route then serves the cache, or the shipped snapshot before any fetch), or keep the mount refresh alone with `refreshMinutes: 0`.
+Turn the whole thing off with `autoRefresh: false`: the route then serves the cache of the last fetch (or the shipped snapshot before any fetch), and never opens a connection on its own — the honest setting for an air-gapped or quota-limited deployment. `refreshMinutes: 0` keeps the mount refresh and drops the periodic one.
 
 The manual surfaces remain:
 
@@ -154,7 +154,7 @@ Every field is editable from the plugin settings page and overridable per row in
 
 Field semantics:
 
-- `autoRefresh` and `refreshMinutes` control the catalog refresh described above. Both are read live: switching the refresh off, or changing the interval, takes effect at the next scheduled pass.
+- `autoRefresh` and `refreshMinutes` control the catalog refresh described above. Both are read live, so a change takes effect at the next scheduled tick — see that section for what "off" still ticks for.
 - `models` merges over whatever catalog is in force — the endpoint's live answer, or the shipped snapshot when no fetch has succeeded — and always wins by id, so `enabled: false` retires a model the endpoint still serves.
 - `reasoningEfforts` keys are the levels the picker offers (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`); values are the spellings sent to Ollama (`off: none`). `false` declares a model with no thinking control; omission inherits the live entry's levels, and an id neither the endpoint nor the entry describes takes the standard ladder (`off`/`low`/`medium`/`high`/`max`) with no default claimed.
 - `defaultEffort` must be one of the offered levels. It is materialized when a session picks none; otherwise the model's own default applies.

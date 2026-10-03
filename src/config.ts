@@ -17,7 +17,14 @@ import { resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
 import z from '@deepseek-ai/schemastery'
 
 import { DEFAULT_MODELS, type CatalogSource, type OllamaModelEntry } from './catalog.js'
-import { GENERIC_EFFORTS, pinEfforts, THINKING_LEVELS, type PinnedEfforts, type ThinkingLevel } from './reasoning.js'
+import {
+  GENERIC_EFFORTS,
+  offersThinking,
+  pinEfforts,
+  THINKING_LEVELS,
+  type PinnedEfforts,
+  type ThinkingLevel,
+} from './reasoning.js'
 
 /** Provider route this plugin registers. */
 export const PROVIDER = 'ollama-cloud'
@@ -48,6 +55,14 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 15000
 
 /** Minutes between the periodic catalog refreshes a mounted route performs. */
 export const DEFAULT_REFRESH_MINUTES = 1440
+
+/**
+ * How long the refresh scheduler waits before re-reading its own configuration
+ * while the refresh is off or mount-only. Nothing is fetched on such a pass:
+ * it exists so switching the refresh back on in the settings is honored
+ * without a reload, instead of waiting for the next boot.
+ */
+export const IDLE_REFRESH_WATCH_MS = 5 * 60_000
 
 /** One model entry as plugin configuration expresses it. */
 export interface ConfiguredModelEntry {
@@ -131,8 +146,9 @@ export interface Config {
   /**
    * Whether the catalog is refreshed from the endpoint at mount and on the
    * interval below. Off serves the disk cache (or, before any fetch, the
-   * shipped snapshot) for as long as the route is mounted. A change is honored
-   * by the next scheduled pass; the mount refresh has already run by then.
+   * shipped snapshot) for as long as the route is mounted. Both directions are
+   * honored without a reload: the scheduler re-reads this value at every tick,
+   * and keeps ticking on an idle cadence — no network — while it is off.
    */
   autoRefresh: Volatile<boolean>
   /** Minutes between periodic catalog refreshes; `0` refreshes at mount only. */
@@ -284,7 +300,7 @@ function resolveEfforts(
     }
     offered[level as ThinkingLevel] = wire
   }
-  if (!Object.keys(offered).some((level) => level !== 'off')) {
+  if (!offersThinking(offered)) {
     throw new Error(
       `ollama-cloud: model "${modelId}" reasoningEfforts offers no level beyond "off";`
       + ' declare a thinking level or set reasoningEfforts to false',

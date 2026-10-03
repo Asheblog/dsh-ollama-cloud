@@ -8,7 +8,8 @@
   running session, so a model Ollama adds, retires, or re-levels no longer
   waits for a plugin release. Adopting a catalog moves the revision the
   connection reader memoizes on, which is how the new model list *and* every
-  model's thinking levels reach the picker without a restart.
+  model's thinking levels reach the route — and any surface that lists this
+  provider's models — without a restart.
 - Caches that answer at `<DSH home>/cache/dsh-ollama-cloud/catalog.json`
   (atomic writes, validated on read, one endpoint at a time), so the first
   model list of any boot — and an offline boot — is the endpoint's last answer
@@ -23,8 +24,10 @@
   listing is refused outright — a model picker with nothing in it cannot be
   recovered from.
 - Adds `autoRefresh` (default `true`) and `refreshMinutes` (default `1440`; `0`
-  refreshes at mount only) to the plugin configuration. Both are read live, so
-  the next scheduled pass honors a change.
+  refreshes at mount only) to the plugin configuration. Both are re-read on
+  every tick, and the refresh being off still ticks on an idle cadence — no
+  network, just two configuration reads — so switching it back on is honored
+  without a reload.
 - The test suite no longer touches the developer's harness home: it runs every
   test against a throwaway `DSH_HOME` (`vitest.config.ts` + `tests/setup.ts`),
   which the catalog cache made necessary and which the suite now depends on.

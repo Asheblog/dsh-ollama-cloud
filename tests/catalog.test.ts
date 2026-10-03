@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_MODELS } from '../src/catalog.js'
+import {
+  DEFAULT_MODELS,
+  mergeCatalogEntry,
+  mergeLiveCatalog,
+  type OllamaModelEntry,
+} from '../src/catalog.js'
 import { THINKING_LEVELS } from '../src/reasoning.js'
 
 // Expected values were read from live GET https://ollama.com/api/tags and
@@ -83,5 +88,73 @@ describe('DEFAULT_MODELS', () => {
     expect(byId.get('minimax-m3')?.defaultEffort).toBeUndefined()
     expect(byId.get('mistral-large-3:675b')?.reasoningEfforts).toBe(false)
     expect(byId.get('nemotron-3-super')?.contextWindow).toBe(262144)
+  })
+})
+
+describe('mergeCatalogEntry', () => {
+  const shipped: OllamaModelEntry = {
+    id: 'glm-5.3',
+    name: 'GLM-5.3',
+    contextWindow: 1048576,
+    reasoningEfforts: { low: 'low', high: 'high', max: 'max' },
+    defaultEffort: 'max',
+  }
+
+  it('keeps the endpoint answer with the shipped display name', () => {
+    const merged = mergeCatalogEntry(
+      { id: 'glm-5.3', contextWindow: 1048576, reasoningEfforts: { low: 'low', high: 'high', max: 'max' }, defaultEffort: 'max' },
+      shipped,
+    )
+    expect(merged).toEqual(shipped)
+  })
+
+  it('drops an inherited default when the endpoint re-declares the ladder without one', () => {
+    const merged = mergeCatalogEntry(
+      { id: 'glm-5.3', reasoningEfforts: { low: 'low', high: 'high' } },
+      shipped,
+    )
+    expect(merged.reasoningEfforts).toEqual({ low: 'low', high: 'high' })
+    expect(merged.defaultEffort).toBeUndefined()
+    expect(merged.name).toBe('GLM-5.3')
+    expect(merged.contextWindow).toBe(1048576)
+  })
+
+  it('inherits the shipped ladder when the endpoint said nothing about thinking', () => {
+    const merged = mergeCatalogEntry({ id: 'glm-5.3' }, shipped)
+    expect(merged).toEqual(shipped)
+  })
+
+  it('keeps an explicit non-reasoning answer', () => {
+    const merged = mergeCatalogEntry(
+      { id: 'mistral-large-3:675b', reasoningEfforts: false },
+      { id: 'mistral-large-3:675b', name: 'Mistral Large 3 675B', vision: true, reasoningEfforts: false },
+    )
+    expect(merged).toEqual({
+      id: 'mistral-large-3:675b',
+      name: 'Mistral Large 3 675B',
+      vision: true,
+      reasoningEfforts: false,
+    })
+  })
+
+  it('leaves a model the snapshot never shipped to its id, the entry id fallback', () => {
+    expect(mergeCatalogEntry({ id: 'brand-new', vision: true })).toEqual({ id: 'brand-new', vision: true })
+  })
+})
+
+describe('mergeLiveCatalog', () => {
+  it('keeps only what the endpoint still lists, in listing order', () => {
+    const merged = mergeLiveCatalog(
+      [{ id: 'kimi-k3' }, { id: 'brand-new' }],
+      [{ id: 'kimi-k3', name: 'Kimi K3' }, { id: 'retired-model', name: 'Retired' }],
+    )
+    expect(merged.map((model) => model.id)).toEqual(['kimi-k3', 'brand-new'])
+    expect(merged[0]?.name).toBe('Kimi K3')
+    expect(merged[1]?.name).toBeUndefined()
+  })
+
+  it('defaults to the shipped snapshot as the fallback layer', () => {
+    const merged = mergeLiveCatalog(DEFAULT_MODELS.map((model) => ({ id: model.id })))
+    expect(merged.map((model) => model.name)).toEqual(DEFAULT_MODELS.map((model) => model.name))
   })
 })

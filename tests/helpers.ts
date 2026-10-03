@@ -94,8 +94,8 @@ export function jsonResponse(body: unknown, status = 200): Response {
 /**
  * A `fetch` stub answering one Ollama endpoint's native surface the way the
  * host does: `GET /tags` lists ids, `POST /show` describes one model. An id
- * whose `shows` value is `undefined` answers 410, i.e. the listing still names
- * it while the detail request refuses it.
+ * whose `shows` value is `undefined` answers 404, i.e. the listing still names
+ * it while the detail request says the endpoint does not serve it.
  */
 export function ollamaEndpoint(options: {
   listing: readonly string[]

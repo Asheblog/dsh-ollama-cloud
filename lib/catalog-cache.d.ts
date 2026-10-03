@@ -46,7 +46,13 @@ export type CacheWriteResult = {
 };
 /**
  * The cache file this plugin uses by default.
- * @returns `<DSH home>/cache/dsh-ollama-cloud/catalog.json`.
+ *
+ * The path comes from the harness's own home resolution
+ * (`@deepseek-ai/dsh-home-paths`: an explicitly configured home, then
+ * `$DSH_HOME`, then `~/.dsh`), so this plugin's cache lives under the same root
+ * as every other piece of harness user data instead of guessing at it.
+ *
+ * @returns `<harness home>/cache/dsh-ollama-cloud/catalog.json`.
  */
 export declare function defaultCatalogCachePath(): string;
 /**
