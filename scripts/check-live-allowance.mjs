@@ -21,8 +21,13 @@
  *
  *     pnpm run build && pnpm run check:live
  *
- * The key is read from the harness credential store (`~/.dsh/.credentials.yaml`
- * by default, override with `DSH_CREDENTIALS`) and is never printed.
+ * The key comes from `OLLAMA_API_KEY` in the environment, or — the way the
+ * harness itself resolves it — from the credential store (`DSH_CREDENTIALS`,
+ * default `~/.dsh/.credentials.yaml`). It is never printed.
+ *
+ * `--base <url>` checks against another endpoint instead of the configured one
+ * (a local Ollama answers no allowance, which is the other answer this script
+ * has to report correctly).
  */
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -33,16 +38,32 @@ import { createUsageRpcHandler } from '../lib/rpc.js'
 import { resolveConnection } from '../lib/config.js'
 
 const credentialsPath = process.env.DSH_CREDENTIALS ?? join(homedir(), '.dsh', '.credentials.yaml')
-const match = /^\s*OLLAMA_API_KEY:\s*(\S+)\s*$/mu.exec(readFileSync(credentialsPath, 'utf8'))
-if (match === null) {
-  console.error(`check-live-allowance: no OLLAMA_API_KEY in ${credentialsPath}`)
+
+/** The account key: the environment first, then the harness credential store. */
+function resolveKey() {
+  const fromEnvironment = process.env.OLLAMA_API_KEY?.trim()
+  if (fromEnvironment !== undefined && fromEnvironment.length > 0) return fromEnvironment
+  return /^\s*OLLAMA_API_KEY:\s*(\S+)\s*$/mu.exec(readFileSync(credentialsPath, 'utf8'))?.[1]
+}
+
+if (resolveKey() === undefined) {
+  console.error(`check-live-allowance: no OLLAMA_API_KEY in the environment or ${credentialsPath}`)
   process.exit(1)
 }
-const apiKey = match[1]
 
+/** `--base <url>` overrides the endpoint to check. */
+const baseIndex = process.argv.indexOf('--base')
+const baseOverride = baseIndex < 0 ? undefined : process.argv[baseIndex + 1]
+if (baseIndex >= 0 && (baseOverride === undefined || !URL.canParse(baseOverride))) {
+  console.error('check-live-allowance: --base needs an absolute URL')
+  process.exit(1)
+}
+
+const facts = resolveConnection({})
+const baseURL = baseOverride ?? facts.nativeBaseURL
 const handler = createUsageRpcHandler({
-  connection: () => resolveConnection({}),
-  resolveCredential: async () => apiKey,
+  connection: () => ({ ...facts, nativeBaseURL: baseURL }),
+  resolveCredential: async () => resolveKey(),
   credentials: () => undefined,
   fetch: (...args) => fetch(...args),
   attribution: () => ({ 'user-agent': 'dsh-ollama-cloud/check-live-allowance' }),
@@ -69,13 +90,16 @@ const bundle = registration.factory((id) => {
 })
 
 const decoded = bundle.internals.decodeUsageReply(reply.value)
-if (decoded === undefined || decoded.status !== 'ok' || decoded.usage.windows.length === 0) {
+if (decoded === undefined) {
   console.error('check-live-allowance: the browser half could not decode what the host served')
   console.error(`  ${JSON.stringify(decoded)}`)
   process.exit(1)
 }
+// The host maps a 404 onto this state: the supported answer for a local or
+// self-hosted endpoint, and for the public cloud endpoint the contract having
+// moved. Either way there is no allowance to check here.
 if (decoded.status === 'unsupported') {
-  console.error('check-live-allowance: the configured endpoint reports no cloud usage (404)')
+  console.error(`check-live-allowance: ${baseURL} reports no allowance (404)`)
   process.exit(1)
 }
 

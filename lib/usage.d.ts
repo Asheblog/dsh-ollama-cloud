@@ -19,6 +19,12 @@
  * resolved per read and never reaches the browser; the client half only ever
  * sees the decoded snapshot.
  *
+ * The module, its error codes, and the `usage/read` endpoint it answers keep
+ * the `usage` vocabulary on purpose: that is the channel contract an ecosystem
+ * of provider UIs already calls (ADR 0003). What moved is which endpoint behind
+ * it reports the number — `/balance`, not `/usage` — and that is the only
+ * difference a reader has to know about.
+ *
  * @module dsh-ollama-cloud/usage
  */
 /** Billing windows the endpoint reports, in the order selectors should show them. */

@@ -160,6 +160,36 @@ describe('pure helpers', () => {
   })
 })
 
+describe('the refreshing state', () => {
+  it('reports refreshing while a read is in flight, and says so on the control', () => {
+    // The panel's third state in the original report was this one: a read that
+    // never came back. It is a state, not a hang — the control is disabled and
+    // the label changes — so it is pinned here rather than left to inspection.
+    const { module: instance } = loadBundle()
+    const mount = mountClient(instance, rpcStub({ ok: true, value: { status: 'unsupported' } }), translatorFor(instance))
+    void instance.internals.store.read({ call: () => new Promise(() => {}) }, { force: true })
+
+    expect(instance.internals.store.getSnapshot()).toMatchObject({ refreshing: true })
+    const markup = renderToStaticMarkup(cardSeat(mount)({ provider: {}, keyConfigured: true }))
+    expect(markup).toContain('Refreshing…')
+    expect(markup).toContain('disabled=""')
+  })
+
+  it('clears refreshing on every settled outcome', async () => {
+    const replies = [
+      { ok: true, value: { status: 'unsupported' } },
+      { ok: true, value: { status: 'ok', usage: { fetchedAt: 'x', session: { usage: 0.1 } } } },
+      { ok: false, error: { code: 'OLLAMA_USAGE_FAILED', message: 'malformed', details: {} } },
+      undefined,
+    ]
+    for (const reply of replies) {
+      const { module: instance } = loadBundle()
+      await instance.internals.store.read({ call: async () => reply }, { force: true })
+      expect(instance.internals.store.getSnapshot()).toMatchObject({ refreshing: false })
+    }
+  })
+})
+
 describe('rendered seats', () => {
   const READY = {
     status: 'ok',

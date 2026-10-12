@@ -110,11 +110,11 @@ separate page, and no provider-UI shell plugin needed:
 The card reads the account's allowance from `GET <base>/balance` through this
 plugin's own host channel (`/ollama-cloud`), so the API key stays on the host
 and never reaches the browser. That endpoint reports what is *left* of each
-window, and the panel draws the complement; which windows exist is the
-endpoint's answer, so a plan that reports a monthly one gets a third meter with
-no plugin change. A local or self-hosted endpoint answers 404 on `/balance`;
-that renders as "this endpoint does not report cloud usage" rather than an
-error, and the last good snapshot keeps showing instead of disappearing.
+window, and the panel draws the complement; which of its three windows a plan
+has is the endpoint's answer, so a plan that reports a monthly one gets a third
+meter with no plugin change. A local or self-hosted endpoint answers 404 on
+`/balance`; that renders as "this endpoint does not report cloud usage" rather
+than an error, and the last good snapshot keeps showing instead of disappearing.
 
 > The usage channel needs the composition's `connection` row to inject
 > `webServer`; this bundle's patch adds that (profiles without a connection row

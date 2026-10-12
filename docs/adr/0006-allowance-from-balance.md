@@ -54,9 +54,13 @@ wrong about the endpoint it reads.
    `GET <native base>/balance` and decodes
    `included.<window>.remaining_percent` (0–100, what is *left*) into the
    consumed fraction the meter draws, plus `resets_at` normalized to ISO. The
-   display ids stay `monthly` / `session` / `weekly`. A window the plan does not
-   have is simply absent, and an id the panel has no seat for is ignored —
-   membership is the endpoint's answer, not the plugin's list.
+   display ids stay `monthly` / `session` / `weekly`. What the endpoint reports
+   is what shows: a window the plan does not have is simply absent, and an id
+   the panel has no seat for is ignored rather than drawn under a neighbouring
+   window's label. The three seats are the plugin's; within them, membership is
+   the endpoint's answer — a plan reporting none of the three is a diagnosable
+   failure, not a blank panel, and the Consequences below say what a fourth id
+   would take.
 2. **`/api/usage` is deliberately not read.** It reports volume; the panel
    meters an allowance, and `/api/usage` cannot answer that question at all.
    Rejected: **reading both**, and showing request counts beside the meters —
@@ -80,6 +84,14 @@ wrong about the endpoint it reads.
    phantom-contract class this ADR removes — the field can never be non-empty,
    so nothing user-visible changes by deleting it. When Ollama ships model
    breakdowns they come back as a designed feature, from a real answer.
+
+   That deletion covers the reset-instant spellings the retired shape used to
+   answer as well — `reset_at`, `reset`, `resetsAt`, epoch seconds and
+   milliseconds, `reset_after_seconds`. The current contract answers `resets_at`
+   as an ISO instant, and a window that carries no instant at all keeps its
+   entry and falls back to the documented cadence, so tolerance for spellings no
+   endpoint sends carried risk (a wrongly read instant is a wrong reset line)
+   without carrying value.
 5. **`purchased.balance_usd` is not surfaced.** It is a real fact this endpoint
    reports and this panel does not show. That is a scope decision, recorded
    here so it reads as one: a dollar balance is not a percentage of an
@@ -92,7 +104,10 @@ wrong about the endpoint it reads.
    half's own decoder, and prints each window's remaining share. It needs the
    account's key and the network, so it stays out of `pnpm check`; it exists to
    be run by hand when the endpoint is suspected of moving, and it is the check
-   that would have caught this.
+   that would have caught this. It reports the three ways it can find drift
+   apart — a read that failed, an endpoint that answers no allowance at all
+   (404), and a share outside 0–100 — because "the decode broke" and "the
+   endpoint stopped being a cloud one" are different findings.
 
 ## Consequences
 
@@ -108,6 +123,14 @@ wrong about the endpoint it reads.
   so it draws two meters; a plan that reports a monthly window gets a third
   with no code change, because the ids are the same and membership is the
   endpoint's answer.
+- The panel reads three ids (`session`, `weekly`, `monthly`) because it has
+  three seats, and a seat is a label plus a reset cadence plus a place in the
+  display order — not just a key. A fourth kind of window would therefore need
+  a client change, and until it has one a plan reporting only ids outside the
+  three fails loudly with the ids it sent (`included keys: …`) rather than
+  drawing an unlabeled meter. That is a known limit rather than an accident:
+  rendering an unknown id under a neighbouring window's label would put a wrong
+  number on screen, which is worse than a failure that names itself.
 - The internal snapshot no longer carries per-model counts, and the wire window
   no longer carries `models`. A third-party reader of this plugin's channel
   that *required* that field would break loudly rather than render nothing —

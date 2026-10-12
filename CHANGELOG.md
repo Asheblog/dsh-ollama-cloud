@@ -30,6 +30,16 @@
   in this repository pins a mock, and a mock is written from the same assumption
   as the code it feeds — which is how this drift went unnoticed while the suite
   stayed green. It needs the key and the network, so it stays out of `pnpm check`.
+- **Migration: none for a deployment that uses this plugin.** The provider, the
+  settings namespace, the credential reference, and both UI seats are unchanged;
+  the panel simply reads the endpoint that reports an allowance. A third-party
+  reader of this plugin's channel (`/ollama-cloud` + `usage/read`) must stop
+  requiring the window's `models` field — nothing else about the wire shape moved.
+- Also deleted with the retired shape: the reset-instant spellings it used to
+  answer (`reset_at`, `reset`, `resetsAt`, epoch seconds and milliseconds,
+  `reset_after_seconds`). The current contract answers `resets_at` as an ISO
+  instant, and a window that carries no instant at all keeps the documented
+  cadence (ADR 0006, decision 4).
 - The wire window is now `{ usage, resetsAt? }`, which is why this is a minor
   release rather than a patch: a third-party reader of this plugin's channel
   should re-read the type.

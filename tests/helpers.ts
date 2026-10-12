@@ -233,7 +233,10 @@ export interface ClientBundle {
   apply: (ctx: unknown) => void
   internals: {
     COPY: { en: Record<string, string>; zh: Record<string, string> }
-    store: { read(rpc: unknown, options?: { force?: boolean }): Promise<unknown> }
+    store: {
+      read(rpc: unknown, options?: { force?: boolean }): Promise<unknown>
+      getSnapshot(): Record<string, unknown>
+    }
     decodeUsageReply: (value: unknown) => unknown
     failureText: (state: Record<string, unknown>, t: Translate) => string
     formatClock: (iso: string) => string | undefined

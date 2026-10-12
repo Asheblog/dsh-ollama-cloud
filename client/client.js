@@ -275,7 +275,7 @@ window.__ModuleLoader__.load({
         : t('usageResetsEveryHours', { count: String(fallback.hours) })
     }
 
-    /** The window whose model counts the card shows first. */
+    /** The window the compact sidebar row reports: the first one the endpoint sent. */
     function primaryWindow(windows) {
       for (const id of WINDOW_ORDER) {
         const found = windows.find((window) => window.id === id)

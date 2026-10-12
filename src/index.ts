@@ -95,7 +95,6 @@ export type {
 } from './rpc.js'
 export { toWireUsage } from './rpc.js'
 export {
-  BALANCE_PATH,
   decodeBalanceResponse,
   readUsage,
   USAGE_MAX_BYTES,
