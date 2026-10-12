@@ -97,9 +97,8 @@ The plugin ships a browser half that renders in the host's own surfaces — no
 separate page, and no provider-UI shell plugin needed:
 
 - **Models page card**: inside the Ollama Cloud row (`Settings → Models`), one
-  meter per billing window with its remaining share and reset line, the primary
-  window's per-model request counts, the write-only **API key** field, and a
-  refresh button.
+  meter per billing window the plan has, each with its remaining share and reset
+  line, the write-only **API key** field, and a refresh button.
 - **Sidebar row**: a compact remaining-quota progress bar under the session
   list — the label and percentage on one line, the bar beneath it, filled with
   what is *left* and graded by the remaining share (`ok` / `warn` / `critical`)
@@ -108,11 +107,14 @@ separate page, and no provider-UI shell plugin needed:
   sidebar mounts and every 15 minutes after that, and the collapsed 56px rail
   keeps the mini bar plus the percentage with no label.
 
-The card reads usage through this plugin's own host channel (`/ollama-cloud`),
-so the API key stays on the host and never reaches the browser. A local or
-self-hosted endpoint answers 404 on `/usage`; that renders as "this endpoint
-does not report cloud usage" rather than an error, and the last good snapshot
-keeps showing instead of disappearing.
+The card reads the account's allowance from `GET <base>/balance` through this
+plugin's own host channel (`/ollama-cloud`), so the API key stays on the host
+and never reaches the browser. That endpoint reports what is *left* of each
+window, and the panel draws the complement; which windows exist is the
+endpoint's answer, so a plan that reports a monthly one gets a third meter with
+no plugin change. A local or self-hosted endpoint answers 404 on `/balance`;
+that renders as "this endpoint does not report cloud usage" rather than an
+error, and the last good snapshot keeps showing instead of disappearing.
 
 > The usage channel needs the composition's `connection` row to inject
 > `webServer`; this bundle's patch adds that (profiles without a connection row
@@ -199,6 +201,7 @@ Both share the route's credential reference and `baseURL`. Requests carry the cr
 ```sh
 pnpm install
 pnpm check        # typecheck + tests + build
+pnpm run check:live   # the real allowance endpoint, end to end (needs the key)
 pnpm pack         # produce the tarball
 node scripts/check-tarball.mjs   # verify the artifact is independently installable
 ```

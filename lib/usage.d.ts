@@ -1,16 +1,23 @@
 /**
- * Ollama Cloud account usage behind the `usage/read` RPC endpoint.
+ * Ollama Cloud account allowance behind the `usage/read` RPC endpoint.
+ *
+ * `GET <native base>/balance` reports, per included billing window, how much of
+ * that window's allowance is *left* (`remaining_percent`, 0–100), when the
+ * window resets (`resets_at`), and the purchased balance behind the allowance
+ * (`purchased.balance_usd`). The endpoint is cloud-only and credentialed: a
+ * local Ollama server answers 404, which is a supported answer here — "this
+ * endpoint does not report cloud usage" — and never an error.
+ *
+ * Ollama also documents `GET /api/usage`, which is a different surface: a
+ * request/token/cost time series per range (`24h`/`7d`/`30d`), with no
+ * allowance and no per-model breakdown. This module deliberately does not read
+ * it — the panel meters an allowance, and `/balance` is what reports one.
  *
  * The internal snapshot this module decodes is projected onto the browser's
  * wire shape (`WireUsageSnapshot`, windows keyed by id) in `rpc.ts`, which is
- * what the ecosystem's Ollama usage readers already decode.
- *
- * `GET <native base>/usage` reports, per billing window, the consumed fraction
- * of the account's allowance plus the request counts of the models that spent
- * it. That endpoint is cloud-only: a local Ollama server answers 404, which is
- * a supported answer here — "this endpoint does not report cloud usage" — and
- * never an error. The credential is resolved per read and never reaches the
- * browser; the client half only ever sees the decoded snapshot.
+ * what the ecosystem's Ollama usage readers already decode. The credential is
+ * resolved per read and never reaches the browser; the client half only ever
+ * sees the decoded snapshot.
  *
  * @module dsh-ollama-cloud/usage
  */
@@ -18,33 +25,26 @@
 export declare const USAGE_WINDOW_IDS: readonly ["monthly", "session", "weekly"];
 /** One reporting period. */
 export type UsageWindowId = (typeof USAGE_WINDOW_IDS)[number];
-/** Largest usage reply this plugin reads; anything bigger is not a usage snapshot. */
+/** Allowance path on the native base; cloud-only, and a 404 on a local server. */
+export declare const BALANCE_PATH = "/balance";
+/** Largest usage reply this plugin reads; anything bigger is not an allowance snapshot. */
 export declare const USAGE_MAX_BYTES = 1048576;
 /** Default per-attempt budget for a usage read, matching the other non-chat requests. */
 export declare const DEFAULT_USAGE_TIMEOUT_MS = 15000;
 /** The endpoint has no usage surface (a local or self-hosted server). */
 export declare const USAGE_UNSUPPORTED = "OLLAMA_USAGE_UNSUPPORTED";
-/** The endpoint answered, but not with a usable usage snapshot. */
+/** The endpoint answered, but not with a usable allowance snapshot. */
 export declare const USAGE_FAILED = "OLLAMA_USAGE_FAILED";
-/** One model's request count inside a window. */
-export interface OllamaUsageModelCount {
-    /** Provider-side model label, for example `web search` or a model id. */
-    readonly name: string;
-    /** Requests this model made inside the window. */
-    readonly requestCount: number;
-}
 /** One billing window's consumed fraction. */
 export interface OllamaUsageWindow {
     /** Reporting period this window covers. */
     readonly id: UsageWindowId;
     /** Consumed fraction of the allowance; `0.891` renders as `89.1%`. */
     readonly usedFraction: number;
-    /** Models that spent the window, as the endpoint labelled them. */
-    readonly models: readonly OllamaUsageModelCount[];
     /** Absolute instant the window resets, when the endpoint disclosed one. */
     readonly resetsAt?: string;
 }
-/** One decoded usage snapshot. */
+/** One decoded allowance snapshot. */
 export interface OllamaUsageSnapshot {
     /** When this plugin read the endpoint. */
     readonly fetchedAt: string;
@@ -63,19 +63,21 @@ export declare class UsageError extends Error {
     readonly code: string;
 }
 /**
- * Decode one `/usage` response body.
+ * Decode one `/balance` response body.
  *
- * A window whose `usage` is not a finite non-negative number is dropped, and a
- * single malformed model entry is skipped, because one odd row must not sink
- * the whole panel. A body that yields no window at all is malformed.
+ * A window whose `remaining_percent` is not a finite number is dropped, and an
+ * id this plugin has no seat for is ignored, because one odd row must not sink
+ * the whole panel. A body that yields no window at all is malformed — and it
+ * names the keys it saw, because "the endpoint changed its shape" is exactly
+ * the failure a reader has to be able to diagnose from one line.
  *
  * @param body - parsed response body.
  * @param url - endpoint the body came from, for diagnostics.
- * @param now - instant used to turn relative resets into absolute ones.
+ * @param now - instant the read is attributed to.
  * @returns the decoded snapshot.
  * @throws {UsageError} {@link USAGE_FAILED} when no window could be decoded.
  */
-export declare function decodeUsageResponse(body: unknown, url: string, now: number): OllamaUsageSnapshot;
+export declare function decodeBalanceResponse(body: unknown, url: string, now: number): OllamaUsageSnapshot;
 /** Endpoint and credential for one usage read. */
 export interface UsageTarget {
     /** Native Ollama API base, e.g. `https://ollama.com/api`. */
@@ -93,7 +95,7 @@ export interface UsageDeps {
     readonly attribution?: () => Record<string, string>;
 }
 /**
- * Read one usage snapshot from the endpoint.
+ * Read one allowance snapshot from the endpoint.
  * @param target - endpoint and credential for this read.
  * @param deps - injectable fetch and attribution headers.
  * @param signal - caller cancellation.

@@ -1,6 +1,6 @@
 {
   "name": "dsh-ollama-cloud",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Ollama Cloud provider for DeepSeek Harness: one-click provider setup with per-model reasoning-effort control, a self-updating model catalog from the configured endpoint, and account usage in the Models page and sidebar.",
   "type": "module",
   "license": "MIT",
@@ -75,6 +75,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:pi-ai": "node scripts/check-pi-ai-alignment.mjs",
+    "check:live": "node scripts/check-live-allowance.mjs",
     "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run check:pi-ai",
     "pack:check": "node scripts/check-tarball.mjs"
   },

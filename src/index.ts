@@ -95,14 +95,15 @@ export type {
 } from './rpc.js'
 export { toWireUsage } from './rpc.js'
 export {
-  decodeUsageResponse,
+  BALANCE_PATH,
+  decodeBalanceResponse,
   readUsage,
   USAGE_MAX_BYTES,
   USAGE_UNSUPPORTED,
   USAGE_WINDOW_IDS,
   UsageError,
 } from './usage.js'
-export type { OllamaUsageModelCount, OllamaUsageSnapshot, OllamaUsageWindow, UsageWindowId } from './usage.js'
+export type { OllamaUsageSnapshot, OllamaUsageWindow, UsageWindowId } from './usage.js'
 export { GENERIC_EFFORTS, offeredLevels, pinEfforts, policyFromThinking } from './reasoning.js'
 export type { ReasoningPolicy, ThinkingLevel } from './reasoning.js'
 export { createOllamaCloudAuth, createPiAiProfile, toPiAiModel } from './profile.js'

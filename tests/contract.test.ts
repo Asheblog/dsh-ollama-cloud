@@ -12,18 +12,15 @@ import { loadBundle } from './helpers.js'
  * contract, and it is pinned here.
  */
 const LIVE_BODY = {
-  limits: {
-    monthly: {
-      usage: 0.891,
-      models: [{ name: 'web search', request_count: 12 }],
-      resets_at: '2026-10-01T00:00:00Z',
-    },
-    session: { usage: 0.148, models: [{ name: 'deepseek-v4.1-flash', request_count: 419 }] },
+  included: {
+    monthly: { remaining_percent: 10.9, resets_at: '2026-11-01T00:00:00Z' },
+    session: { remaining_percent: 85.2, resets_at: '2026-10-12T08:00:00Z' },
   },
+  purchased: { balance_usd: 1.59 },
 }
 
 describe('host reply → client decoder', () => {
-  it('serves a snapshot the browser half accepts, with its model counts intact', async () => {
+  it('serves a snapshot the browser half accepts, window for window', async () => {
     const handler = createUsageRpcHandler({
       connection: () => resolveConnection({}),
       resolveCredential: async () => 'k',
@@ -39,18 +36,18 @@ describe('host reply → client decoder', () => {
     const { module } = loadBundle()
     const decode = module.internals.decodeUsageReply as (value: unknown) => {
       status: string
-      usage?: { fetchedAt: string; windows: Array<{ id: string; usedFraction: number; models: unknown[] }> }
+      usage?: { fetchedAt: string; windows: Array<{ id: string; usedFraction: number; resetsAt?: string }> }
     }
     const decoded = decode((reply as { value: unknown }).value)
     expect(decoded.status).toBe('ok')
     expect(decoded.usage?.windows.map((window) => window.id)).toEqual(['monthly', 'session'])
     expect(decoded.usage?.windows[0]).toMatchObject({
       usedFraction: 0.891,
-      models: [{ name: 'web search', requestCount: 12 }],
+      resetsAt: '2026-11-01T00:00:00.000Z',
     })
     expect(decoded.usage?.windows[1]).toMatchObject({
       usedFraction: 0.148,
-      models: [{ name: 'deepseek-v4.1-flash', requestCount: 419 }],
+      resetsAt: '2026-10-12T08:00:00.000Z',
     })
   })
 

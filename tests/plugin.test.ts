@@ -64,7 +64,7 @@ describe('usage RPC registration', () => {
     const calls: string[] = []
     vi.stubGlobal('fetch', (async (url: string) => {
       calls.push(String(url))
-      return new Response(JSON.stringify({ limits: { monthly: { usage: 0.5 } } }), { status: 200 })
+      return new Response(JSON.stringify({ included: { monthly: { remaining_percent: 50 } } }), { status: 200 })
     }) as unknown as typeof fetch)
 
     const { ctx, captured } = fakeContext({ credentials: { resolve: async () => ({ value: 'k' }) } })
@@ -77,7 +77,7 @@ describe('usage RPC registration', () => {
       payload: unknown,
     ) => Promise<unknown>
     await expect(handler('usage/read', {})).resolves.toMatchObject({ ok: true, value: { status: 'ok' } })
-    expect(calls[0]).toBe('https://ollama.com/api/usage')
+    expect(calls[0]).toBe('https://ollama.com/api/balance')
     await expect(handler('credential/status', {})).resolves.toMatchObject({
       ok: true,
       value: { reference: 'OLLAMA_API_KEY', configured: true },

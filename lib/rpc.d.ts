@@ -19,7 +19,7 @@
 import { type CredentialProvider } from '@deepseek-ai/dsh-credentials';
 import { type ConnectionOptions } from './config.js';
 import type { ResolveCredential } from './credentials.js';
-import { type OllamaUsageModelCount, type OllamaUsageSnapshot } from './usage.js';
+import { type OllamaUsageSnapshot } from './usage.js';
 /** Channel the browser half registers and calls under. */
 export declare const USAGE_RPC_CHANNEL = "/ollama-cloud";
 /** Read one usage snapshot. */
@@ -52,8 +52,6 @@ export type RpcReply<T> = RpcSuccess<T> | RpcFailure;
 export interface WireUsageWindow {
     /** Consumed fraction of the allowance. */
     readonly usage: number;
-    /** Models that spent the window. */
-    readonly models: readonly OllamaUsageModelCount[];
     /** Absolute instant the window resets, when the endpoint disclosed one. */
     readonly resetsAt?: string;
 }

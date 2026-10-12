@@ -78,24 +78,15 @@ describe('usage decoding', () => {
       usage: {
         fetchedAt: '2026-09-29T15:00:00.000Z',
         weekly: { usage: 0.4 },
-        monthly: {
-          usage: 0.891,
-          models: [{ name: 'web search', requestCount: 12 }],
-          resetsAt: '2026-10-01T00:00:00.000Z',
-        },
+        monthly: { usage: 0.891, resetsAt: '2026-10-01T00:00:00.000Z' },
       },
     })).toEqual({
       status: 'ok',
       usage: {
         fetchedAt: '2026-09-29T15:00:00.000Z',
         windows: [
-          {
-            id: 'monthly',
-            usedFraction: 0.891,
-            models: [{ name: 'web search', requestCount: 12 }],
-            resetsAt: '2026-10-01T00:00:00.000Z',
-          },
-          { id: 'weekly', usedFraction: 0.4, models: [] },
+          { id: 'monthly', usedFraction: 0.891, resetsAt: '2026-10-01T00:00:00.000Z' },
+          { id: 'weekly', usedFraction: 0.4 },
         ],
       },
     })
@@ -107,10 +98,12 @@ describe('usage decoding', () => {
     expect(internals.decodeUsageReply({ status: 'ok', usage: { fetchedAt: 1 } })).toBeUndefined()
     expect(internals.decodeUsageReply({ status: 'ok', usage: { fetchedAt: 'x', monthly: { usage: -1 } } }))
       .toBeUndefined()
+    // A reset instant that is not a string is no instant: the window keeps its
+    // number and the panel falls back to the cadence it documents.
     expect(internals.decodeUsageReply({
       status: 'ok',
-      usage: { fetchedAt: 'x', monthly: { usage: 0.1, models: 'nope' } },
-    })).toEqual({ status: 'ok', usage: { fetchedAt: 'x', windows: [{ id: 'monthly', usedFraction: 0.1, models: [] }] } })
+      usage: { fetchedAt: 'x', monthly: { usage: 0.1, resetsAt: 7 } },
+    })).toEqual({ status: 'ok', usage: { fetchedAt: 'x', windows: [{ id: 'monthly', usedFraction: 0.1 }] } })
     expect(internals.decodeUsageReply(undefined)).toBeUndefined()
   })
 })
@@ -172,11 +165,7 @@ describe('rendered seats', () => {
     status: 'ok',
     usage: {
       fetchedAt: '2026-09-29T15:00:00.000Z',
-      monthly: {
-        usage: 0.891,
-        models: [{ name: 'web search', requestCount: 12 }, { name: 'gpt-oss:120b', requestCount: 3 }],
-        resetsAt: '2026-10-01T00:00:00.000Z',
-      },
+      monthly: { usage: 0.891, resetsAt: '2026-10-01T00:00:00.000Z' },
       session: { usage: 0.25 },
     },
   }
@@ -190,15 +179,12 @@ describe('rendered seats', () => {
     return renderToStaticMarkup(cardSeat(mount)({ provider: {}, keyConfigured: true }))
   }
 
-  it('renders meters, model counts, and the key field once the snapshot is ready', async () => {
+  it('renders meters and the key field once the snapshot is ready', async () => {
     const markup = await cardMarkupAfter({ ok: true, value: READY })
     expect(markup).toContain('Cloud usage')
     expect(markup).toContain('Monthly usage')
     expect(markup).toContain('10.9% left')
     expect(markup).toContain('data-severity="warn"')
-    expect(markup).toContain('Usage sources')
-    expect(markup).toContain('web search')
-    expect(markup).toContain('12 requests')
     expect(markup).toContain('type="password"')
     expect(markup).toContain('Configured')
     expect(markup).toContain('aria-label="Monthly usage: 10.9% left"')

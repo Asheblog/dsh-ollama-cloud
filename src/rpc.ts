@@ -27,7 +27,6 @@ import {
   readUsage,
   USAGE_UNSUPPORTED,
   UsageError,
-  type OllamaUsageModelCount,
   type OllamaUsageSnapshot,
 } from './usage.js'
 
@@ -70,8 +69,6 @@ export type RpcReply<T> = RpcSuccess<T> | RpcFailure
 export interface WireUsageWindow {
   /** Consumed fraction of the allowance. */
   readonly usage: number
-  /** Models that spent the window. */
-  readonly models: readonly OllamaUsageModelCount[]
   /** Absolute instant the window resets, when the endpoint disclosed one. */
   readonly resetsAt?: string
 }
@@ -104,7 +101,6 @@ export function toWireUsage(snapshot: OllamaUsageSnapshot): WireUsageSnapshot {
   for (const window of snapshot.windows) {
     windows[window.id] = {
       usage: window.usedFraction,
-      models: window.models.map((model) => ({ name: model.name, requestCount: model.requestCount })),
       ...window.resetsAt === undefined ? {} : { resetsAt: window.resetsAt },
     }
   }

@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.4.0 — 2026-10-12
+
+- **Fixes the quota panel: the account's allowance is read from
+  `GET <base>/balance`.** The endpoint the panel was built on (`/usage`) had
+  stopped answering the `limits` object it decoded — it now answers the
+  request/token/cost time series Ollama documents — so every read was rejected
+  as malformed and both surfaces showed their failure states ("云端用量 / 读取用量失败。",
+  "额度不可用"). The endpoint that does report an allowance is `/balance`:
+  per window, how much is *left* (`remaining_percent`), when it resets
+  (`resets_at`), and the purchased balance behind it. The panel now reads that,
+  converts the remaining share into the consumed fraction its meters draw, and
+  shows whichever windows the plan actually has (session / weekly / monthly) —
+  membership is the endpoint's answer, so a monthly window needs no plugin
+  change.
+- Deletes the per-model "usage sources" section, and the `models` field from
+  the channel's wire window. The retired shape carried per-window model counts;
+  the current contract has none (Ollama lists breakdowns by model and API key
+  as "coming soon"), so the section could never render again. Nothing
+  user-visible is lost, and a field that no endpoint sends is the exact
+  phantom-contract class this release removes.
+- Clamps a remaining reading just outside 0–100 instead of dropping the window
+  (`100.4` is a percentage's rounding artefact, not a missing window), and
+  keeps a window the endpoint reports without a reset instant — its label then
+  falls back to the documented cadence (session 5h, weekly 7d, monthly 30d).
+- Adds `scripts/check-live-allowance.mjs` (`pnpm run check:live`): it drives the
+  real endpoint through the host decode, the wire projection, and the browser
+  half's own decoder, and prints each window's remaining share. Every unit test
+  in this repository pins a mock, and a mock is written from the same assumption
+  as the code it feeds — which is how this drift went unnoticed while the suite
+  stayed green. It needs the key and the network, so it stays out of `pnpm check`.
+- The wire window is now `{ usage, resetsAt? }`, which is why this is a minor
+  release rather than a patch: a third-party reader of this plugin's channel
+  should re-read the type.
+- Design rationale, the live evidence, and the rejected alternatives (reading
+  `/api/usage` too, or as a fallback; surfacing `purchased.balance_usd` here):
+  [ADR 0006](docs/adr/0006-allowance-from-balance.md). It supersedes the
+  endpoint assumption in ADR 0003, whose placement and channel decisions stand.
+
 ## 0.3.0 — 2026-10-03
 
 - **The catalog now updates itself.** At mount — and then on a configurable

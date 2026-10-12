@@ -6,8 +6,8 @@
  *
  * - `settings.models.provider-card` (keyed by this plugin's settings
  *   namespace): the Ollama Cloud usage card inside the Models page row, with
- *   one meter per billing window, the primary window's per-model request
- *   counts, the write-only API-key field, and a refresh control.
+ *   one meter per billing window, the write-only API-key field, and a refresh
+ *   control.
  * - `sidebar.footer.action`: a compact remaining-quota progress bar
  *   (label + percentage on one line, the bar under it) that expands into the
  *   same window detail, refreshed on mount and on an interval. The collapsed
@@ -81,8 +81,6 @@ window.__ModuleLoader__.load({
         usageResetsAt: '{time} 重置',
         usageResetsEveryHours: '每 {count} 小时重置',
         usageResetsEveryDays: '每 {count} 天重置',
-        usageModels: '用量来源',
-        usageRequests: '{count} 次请求',
         usageUpdatedAt: '更新于 {time}',
         usageUnsupported: '此端点不上报云端用量。',
         usageNeedsRestart: '用量将在宿主重新加载本插件后出现（请重启 dsh）。',
@@ -112,8 +110,6 @@ window.__ModuleLoader__.load({
         usageResetsAt: 'Resets at {time}',
         usageResetsEveryHours: 'Resets every {count} hours',
         usageResetsEveryDays: 'Resets every {count} days',
-        usageModels: 'Usage sources',
-        usageRequests: '{count} requests',
         usageUpdatedAt: 'Updated {time}',
         usageUnsupported: 'This endpoint does not report cloud usage.',
         usageNeedsRestart: 'Usage appears after the running host reloads this plugin (restart dsh).',
@@ -163,13 +159,6 @@ window.__ModuleLoader__.load({
 .dshoc-meter-track[data-severity="critical"] { color: var(--dsw-alias-state-error-primary); }
 .dshoc-meter-fill { height: 100%; background: currentColor; border-radius: 999px; transition: width 200ms ease; }
 .dshoc-skeleton { height: 6px; border-radius: 999px; background: var(--dsw-alias-bg-skeleton); }
-.dshoc-models { display: flex; flex-direction: column; gap: 2px; }
-.dshoc-models-title { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); margin: 2px 0 0; }
-.dshoc-model-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.dshoc-model-name { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-secondary);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dshoc-model-count { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary);
-  font-variant-numeric: tabular-nums; }
 .dshoc-key { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--dsw-alias-border-l2); padding-top: 8px; }
 .dshoc-key-line { display: flex; align-items: center; gap: 6px; }
 .dshoc-key-input { flex: 1; min-width: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary);
@@ -244,18 +233,9 @@ window.__ModuleLoader__.load({
         if (typeof candidate.usage !== 'number' || !Number.isFinite(candidate.usage) || candidate.usage < 0) {
           return undefined
         }
-        const models = []
-        if (Array.isArray(candidate.models)) {
-          for (const model of candidate.models) {
-            if (!isRecord(model)) continue
-            if (typeof model.name !== 'string' || typeof model.requestCount !== 'number') continue
-            models.push({ name: model.name, requestCount: model.requestCount })
-          }
-        }
         windows.push({
           id,
           usedFraction: candidate.usage,
-          models,
           ...typeof candidate.resetsAt === 'string' ? { resetsAt: candidate.resetsAt } : {},
         })
       }
@@ -526,7 +506,6 @@ window.__ModuleLoader__.load({
       }, [props.ctx])
 
       const windows = state.usage === undefined ? [] : state.usage.windows
-      const primary = primaryWindow(windows)
       const body = []
       if (state.status === 'idle' || (state.status === 'ready' && windows.length === 0)) {
         body.push(h('div', { className: 'dshoc-windows', key: 'skeleton' }, h('div', { className: 'dshoc-skeleton' })))
@@ -550,23 +529,6 @@ window.__ModuleLoader__.load({
                 valueText: t('usageRemaining', { percent: String(remainingPercent(window.usedFraction)) }),
                 hint: resetLabelOf(window, t),
               }),
-            ),
-          ),
-        )
-      }
-      if (primary !== undefined && primary.models.length > 0) {
-        body.push(
-          h(
-            'div',
-            { className: 'dshoc-models', key: 'models' },
-            h('p', { className: 'dshoc-models-title' }, t('usageModels')),
-            primary.models.map((model) =>
-              h(
-                'div',
-                { className: 'dshoc-model-row', key: model.name },
-                h('span', { className: 'dshoc-model-name', title: model.name }, model.name),
-                h('span', { className: 'dshoc-model-count' }, t('usageRequests', { count: String(model.requestCount) })),
-              ),
             ),
           ),
         )

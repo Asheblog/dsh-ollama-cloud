@@ -9,7 +9,7 @@ import {
   USAGE_ENDPOINT,
 } from '../src/rpc.js'
 
-const BODY = { limits: { monthly: { usage: 0.5, models: [{ name: 'web search', request_count: 2 }] } } }
+const BODY = { included: { session: { remaining_percent: 50, resets_at: '2026-10-12T03:00:00Z' } } }
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -48,14 +48,14 @@ describe('usage/read', () => {
     const { handler, calls } = harness()
     const reply = await handler(USAGE_ENDPOINT, {})
     expect(reply).toMatchObject({ ok: true, value: { status: 'ok' } })
-    expect(calls[0]?.url).toBe('https://ollama.com/api/usage')
+    expect(calls[0]?.url).toBe('https://ollama.com/api/balance')
     expect(calls[0]?.init?.headers).toMatchObject({ authorization: 'Bearer stored-key' })
     // The channel serves the shape the ecosystem's Ollama usage readers decode.
     expect((reply as { value: unknown }).value).toEqual({
       status: 'ok',
       usage: {
         fetchedAt: expect.any(String),
-        monthly: { usage: 0.5, models: [{ name: 'web search', requestCount: 2 }] },
+        session: { usage: 0.5, resetsAt: '2026-10-12T03:00:00.000Z' },
       },
     })
   })
@@ -63,7 +63,7 @@ describe('usage/read', () => {
   it('honors a draft endpoint and one-shot key from a configuration surface', async () => {
     const { handler, calls } = harness()
     await handler(USAGE_ENDPOINT, { baseURL: 'https://ollama.example/v1', apiKey: 'draft-key' })
-    expect(calls[0]?.url).toBe('https://ollama.example/api/usage')
+    expect(calls[0]?.url).toBe('https://ollama.example/api/balance')
     expect(calls[0]?.init?.headers).toMatchObject({ authorization: 'Bearer draft-key' })
   })
 
