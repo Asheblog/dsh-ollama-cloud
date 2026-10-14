@@ -158,6 +158,17 @@ describe('pure helpers', () => {
     expect(internals.windowCopyKey('session')).toBe('usageSession')
     expect(internals.windowCopyKey('weekly')).toBe('usageWeekly')
   })
+
+  it('asks for a sooner poll while the last read failed', () => {
+    // A failed read must not leave the row reading "unavailable" for a whole
+    // cadence: the row that failed retries on the short interval, and goes back
+    // to the long one as soon as a read lands.
+    expect(internals.pollIntervalFor({ status: 'error' })).toBe(internals.RETRY_MS)
+    expect(internals.pollIntervalFor({ status: 'ready' })).toBe(internals.POLL_MS)
+    expect(internals.pollIntervalFor({ status: 'idle' })).toBe(internals.POLL_MS)
+    expect(internals.pollIntervalFor({ status: 'unsupported' })).toBe(internals.POLL_MS)
+    expect(internals.RETRY_MS).toBeLessThan(internals.POLL_MS)
+  })
 })
 
 describe('the refreshing state', () => {
@@ -235,8 +246,16 @@ describe('rendered seats', () => {
     })).toContain('Could not reach Ollama Cloud usage')
   })
 
-  it('keeps the last snapshot while stating that it is no longer supported', async () => {
-    const { module: instance } = loadBundle()
+  it('carries the machine diagnostic on a failure, so a screenshot is diagnosable', async () => {
+    const markup = await cardMarkupAfter({
+      ok: false,
+      error: { code: 'OLLAMA_USAGE_FAILED', message: 'https://ollama.com/api/balance answered 502', details: {} },
+    })
+    expect(markup).toContain('Reading usage failed.')
+    expect(markup).toContain('title="OLLAMA_USAGE_FAILED: https://ollama.com/api/balance answered 502"')
+  })
+
+  it('keeps the last snapshot while stating that it is no longer supported', async () => {    const { module: instance } = loadBundle()
     const mount = mountClient(instance, rpcStub(READY), translatorFor(instance))
     await instance.internals.store.read(rpcStub({ ok: true, value: READY }), { force: true })
     await instance.internals.store.read(rpcStub({ ok: true, value: { status: 'unsupported' } }), { force: true })

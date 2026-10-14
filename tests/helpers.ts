@@ -239,6 +239,10 @@ export interface ClientBundle {
     }
     decodeUsageReply: (value: unknown) => unknown
     failureText: (state: Record<string, unknown>, t: Translate) => string
+    diagnosticOf: (state: Record<string, unknown>) => string | undefined
+    pollIntervalFor: (state: Record<string, unknown>) => number
+    RETRY_MS: number
+    POLL_MS: number
     formatClock: (iso: string) => string | undefined
     isNeedsRestart: (message: unknown) => boolean
     primaryWindow: (windows: Array<{ id: string }>) => { id: string } | undefined

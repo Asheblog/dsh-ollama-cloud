@@ -115,6 +115,11 @@ has is the endpoint's answer, so a plan that reports a monthly one gets a third
 meter with no plugin change. A local or self-hosted endpoint answers 404 on
 `/balance`; that renders as "this endpoint does not report cloud usage" rather
 than an error, and the last good snapshot keeps showing instead of disappearing.
+A read that fails transiently (a reset connection, a rate limit, a 5xx from the
+endpoint or from something in front of it) is retried once, and a failed row
+polls every minute until it recovers, because one bad moment should not leave a
+wrong number on screen for a whole cadence. Hover a failure line to see the
+machine diagnostic behind it.
 
 > The usage channel needs the composition's `connection` row to inject
 > `webServer`; this bundle's patch adds that (profiles without a connection row

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.1 — 2026-10-14
+
+- **A transient failure no longer leaves the panel reading "unavailable".** The
+  panel's read travels through whatever sits in front of the endpoint, and in
+  this deployment that is a local proxy that intermittently answers a single
+  `502 Bad Gateway` (observed live: 502, then 200 on a reconnected tunnel) or
+  resets the connection. One such moment became 「读取用量失败。」/「额度不可用」 and
+  the row kept that answer until its next poll — fifteen minutes — or a manual
+  refresh; two incidents had the panel failing at boot while a read a minute
+  later answered with real numbers (boot is also when the catalog refresh fires
+  ~19 requests at the same endpoint through the same proxy). `readUsage` now
+  retries once when the failure is transient — a transport failure before any
+  response, a 429, or any 5xx — and reports everything else immediately, with
+  `UsageError.retryable` carrying that judgement.
+- A failed row polls every 60 seconds instead of waiting its 15-minute cadence,
+  so a blip that outlives the retry heals by itself. (60 s is the rate the
+  endpoint's own documentation recommends.)
+- A failure now carries its diagnosis as a hover title — `OLLAMA_USAGE_FAILED:
+  https://ollama.com/api/balance answered 502` — on the failure line and on the
+  empty panel, so a screenshot of a failure says which layer broke. The visible
+  copy stays localized; the title names a URL and a status, never a secret.
+- An attempt that ran out its timeout is still not retried: it already spent the
+  whole budget, and a doubled wait would tell the user nothing new.
+- Design rationale and the rejected alternatives: [ADR 0007](docs/adr/0007-transient-failures-retry-and-recover.md).
+
 ## 0.4.0 — 2026-10-12
 
 - **Fixes the quota panel: the account's allowance is read from

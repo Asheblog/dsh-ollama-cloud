@@ -19,6 +19,11 @@
  * resolved per read and never reaches the browser; the client half only ever
  * sees the decoded snapshot.
  *
+ * A read retries once when the failure was transient (a reset socket, a rate
+ * limit, a 5xx from the endpoint or from something in front of it) and reports
+ * everything else immediately, because the panel has a cadence and a failure it
+ * keeps showing until the next poll is worse than a moment's delay.
+ *
  * The module, its error codes, and the `usage/read` endpoint it answers keep
  * the `usage` vocabulary on purpose: that is the channel contract an ecosystem
  * of provider UIs already calls (ADR 0003). What moved is which endpoint behind
@@ -37,6 +42,14 @@ export declare const BALANCE_PATH = "/balance";
 export declare const USAGE_MAX_BYTES = 1048576;
 /** Default per-attempt budget for a usage read, matching the other non-chat requests. */
 export declare const DEFAULT_USAGE_TIMEOUT_MS = 15000;
+/**
+ * Delay before the one retry a transient failure earns.
+ *
+ * Short on purpose: what this exists for is an upstream — or a proxy in front
+ * of it — hiccup, and the panel is a background read, so the cost of waiting is
+ * paid by an element nobody is staring at.
+ */
+export declare const RETRY_DELAY_MS = 500;
 /** The endpoint has no usage surface (a local or self-hosted server). */
 export declare const USAGE_UNSUPPORTED = "OLLAMA_USAGE_UNSUPPORTED";
 /** The endpoint answered, but not with a usable allowance snapshot. */
@@ -62,11 +75,20 @@ export declare class UsageError extends Error {
     /**
      * @param message - human-readable failure summary.
      * @param code - stable machine code from this module or the harness taxonomy.
-     * @param options - optional cause.
+     * @param options - optional cause, and whether the failure was transient.
      */
-    constructor(message: string, code: string, options?: ErrorOptions);
+    constructor(message: string, code: string, options?: ErrorOptions & {
+        retryable?: boolean;
+    });
     /** Stable machine code: {@link USAGE_UNSUPPORTED}, {@link USAGE_FAILED}, `INVALID_CREDENTIAL`, `ABORTED`. */
     readonly code: string;
+    /**
+     * Whether the failure was transient: a socket that reset, a rate limit, a 5xx
+     * from the endpoint or from something in front of it. One more attempt at
+     * that moment could have succeeded; everything else — a refused credential, a
+     * body this build cannot read — would fail identically.
+     */
+    readonly retryable: boolean;
 }
 /**
  * Decode one `/balance` response body.
@@ -101,14 +123,21 @@ export interface UsageDeps {
     readonly attribution?: () => Record<string, string>;
 }
 /**
- * Read one allowance snapshot from the endpoint.
+ * Read one allowance snapshot, retrying a transient failure once.
+ *
+ * A read the user can see is a read that has to survive one bad moment: this
+ * deployment's own experience is a proxy in front of the endpoint answering a
+ * single 502, which turned into a panel reading "unavailable" until its next
+ * poll. The retry is deliberately one attempt, and only for the failures that
+ * are worth it — see `UsageError.retryable` — because a read that is refused
+ * for a reason a retry cannot change should report that reason at once.
+ *
  * @param target - endpoint and credential for this read.
  * @param deps - injectable fetch and attribution headers.
  * @param signal - caller cancellation.
  * @returns the decoded snapshot.
- * @throws {UsageError} {@link USAGE_UNSUPPORTED} on 404, `INVALID_CREDENTIAL`
- *   on 401/403, {@link USAGE_FAILED} for any other failure, `ABORTED` when the
- *   caller cancelled.
+ * @throws {UsageError} as {@link readUsageAttempt}, with the second attempt's
+ *   own failure when it fails too.
  */
 export declare function readUsage(target: UsageTarget, deps: UsageDeps, signal?: AbortSignal): Promise<OllamaUsageSnapshot>;
 //# sourceMappingURL=usage.d.ts.map

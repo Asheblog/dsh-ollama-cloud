@@ -174,6 +174,82 @@ describe('readUsage', () => {
     await expect(readUsage(target, { fetch: refused })).rejects.toMatchObject({ code: 'OLLAMA_USAGE_FAILED' })
   })
 
+  it('retries a transient refusal once and keeps the result', async () => {
+    // The 502 a proxy in front of the endpoint answers when it is briefly
+    // unwell: one more attempt is the difference between a panel that shows a
+    // number and one that shows a failure until its next poll.
+    const statuses: number[] = []
+    const route: typeof fetch = async () => {
+      statuses.push(statuses.length)
+      return statuses.length === 1 ? jsonResponse({ error: 'bad gateway' }, 502) : jsonResponse(LIVE_BODY)
+    }
+    const snapshot = await readUsage(target, { fetch: route })
+    expect(snapshot.windows).toHaveLength(2)
+    expect(statuses).toHaveLength(2)
+  })
+
+  it('retries a transport failure that happened before any response', async () => {
+    let calls = 0
+    const route: typeof fetch = async () => {
+      calls += 1
+      if (calls === 1) throw new TypeError('socket hang up')
+      return jsonResponse(LIVE_BODY)
+    }
+    await expect(readUsage(target, { fetch: route })).resolves.toMatchObject({ windows: expect.any(Array) })
+    expect(calls).toBe(2)
+  })
+
+  it('reports the second refusal when the retry is refused too', async () => {
+    let calls = 0
+    const route: typeof fetch = async () => {
+      calls += 1
+      return jsonResponse({ error: 'still down' }, 503)
+    }
+    await expect(readUsage(target, { fetch: route })).rejects.toMatchObject({ code: 'OLLAMA_USAGE_FAILED' })
+    expect(calls).toBe(2)
+  })
+
+  it('does not retry a refusal a retry cannot change', async () => {
+    for (const status of [400, 401, 403, 404]) {
+      let calls = 0
+      const route: typeof fetch = async () => {
+        calls += 1
+        return jsonResponse({ error: 'no' }, status)
+      }
+      await expect(readUsage(target, { fetch: route })).rejects.toBeInstanceOf(UsageError)
+      expect(calls, `status ${status} must not be retried`).toBe(1)
+    }
+  })
+
+  it('does not retry a reply that decoded wrongly', async () => {
+    let calls = 0
+    const route: typeof fetch = async () => {
+      calls += 1
+      return jsonResponse({ limits: { session: { usage: 0.2 } } })
+    }
+    await expect(readUsage(target, { fetch: route })).rejects.toMatchObject({ code: 'OLLAMA_USAGE_FAILED' })
+    expect(calls).toBe(1)
+  })
+
+  it('marks only the transient failures as retryable', async () => {
+    const transient: typeof fetch = async () => jsonResponse({ error: 'busy' }, 502)
+    await expect(readUsage(target, { fetch: transient })).rejects.toMatchObject({ retryable: true })
+    const permanent: typeof fetch = async () => jsonResponse({ error: 'no' }, 401)
+    await expect(readUsage(target, { fetch: permanent })).rejects.toMatchObject({ retryable: false })
+  })
+
+  it('does not retry once the caller has cancelled', async () => {
+    const controller = new AbortController()
+    let calls = 0
+    const route: typeof fetch = async () => {
+      calls += 1
+      controller.abort()
+      return jsonResponse({ error: 'bad gateway' }, 502)
+    }
+    await expect(readUsage(target, { fetch: route }, controller.signal)).rejects.toBeInstanceOf(UsageError)
+    expect(calls).toBe(1)
+  })
+
   it('reports a transport failure as a reach failure', async () => {
     const broken: typeof fetch = async () => {
       throw new TypeError('fetch failed')
