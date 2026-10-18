@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.2 — 2026-10-19
+
+- **Moves the route's pi-ai to the 1.x generation the `0.2.1` harness speaks.**
+  `@earendil-works/pi-ai` moves from `^0.87.1` to `^1.1.0` — the range
+  `dsh-llm-pi-ai@0.2.1-rc.2` declares, and the one the scheduled `pi-ai-drift`
+  workflow has been failing on since 2026-10-17 — and the development
+  dependencies move to `0.2.1-rc.2`, so typecheck and tests run against the
+  contract this build is installed into. The lockfile resolves pi-ai `1.3.0`, a
+  later minor the `^1.1.0` range admits.
+- No route code changed: the `TranscriptContext` contract the route's shim
+  normalizes is identical between 0.87 and 1.x, the pi-ai surface this route
+  uses (`createProvider`, `openai-completions`, `ProviderStreams`, auth store,
+  `normalizeContext`) is source-compatible, and `tests/generation.test.ts`
+  already pins both context shapes at the wire level.
+- `tests/alignment.test.ts` now asserts the boundary fact — the harness range
+  must admit the loaded copy — instead of requiring the loaded copy's
+  `major.minor` to equal the range's floor. `^1.1.0` admits `1.3.0`; a
+  legitimate minor upgrade is no longer reported as drift.
+- **Migration: none for a deployment that uses this plugin.** The provider id,
+  settings namespace, credential reference, model catalog, and both UI seats are
+  unchanged; only the supported harness generation moves forward. `0.2.0`-era
+  hosts keep working through the context shim. Design rationale and the rejected
+  alternatives: [ADR 0004](docs/adr/0004-pi-ai-generation-alignment.md).
+
 ## 0.4.1 — 2026-10-14
 
 - **A transient failure no longer leaves the panel reading "unavailable".** The

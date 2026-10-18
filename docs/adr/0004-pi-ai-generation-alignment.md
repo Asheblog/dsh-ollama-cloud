@@ -1,6 +1,6 @@
 # ADR 0004 — Pin the route's pi-ai to the harness generation, and serve the older one
 
-Status: accepted (2026-09-29)
+Status: accepted (2026-09-29); amended 2026-10-19 (pi-ai 1.x)
 
 ## Context
 
@@ -93,3 +93,30 @@ re-open ADR 0001's trade-offs for no additional protection beyond (2).
   in the request body), so the layer cannot rot silently.
 - This package's pi-ai dependency must be bumped in lockstep with the harness
   generation. `pnpm check` fails until it is, which is the intended pressure.
+
+## Amendment — 2026-10-19: the harness moved to pi-ai 1.x
+
+`dsh-llm-pi-ai@0.2.1-rc.2` — the registry's `next` channel, which the desktop
+app follows — declares `@earendil-works/pi-ai ^1.1.0`, while this package still
+declared `^0.87.1`. The scheduled `pi-ai-drift` workflow caught the move on
+2026-10-17 and failed every probe since: exactly the signal decision (3) exists
+to produce.
+
+Decision (1) is re-applied at the new generation: `dependencies` moves to
+`^1.1.0` (the harness's own range), the development dependencies move to
+`0.2.1-rc.2`, and the lockfile resolves pi-ai `1.3.0` — a later minor the
+`^1.1.0` range admits, because the harness range is a range and not a pin.
+Nothing in decision (2) changes: the `TranscriptContext` contract that
+`normalizeContext()` produces is identical between 0.87 and 1.x, so
+`contextTolerantStreams()` still folds a pre-0.87 `Context` and still forwards
+an already-normalized transcript untouched. The pi-ai 1.x surface this route
+uses — `createProvider`, `openai-completions`, `ProviderStreams`, the auth
+store, `normalizeContext` — is source-compatible, and no route code changed for
+the bump.
+
+One test expectation did change. `tests/alignment.test.ts` used to require the
+loaded copy's `major.minor` to equal the harness range's floor, which turns
+every legitimate minor upgrade inside the declared range into a failure. It now
+asserts the boundary fact itself: the harness range must admit the loaded
+version (`^1.1.0` admits `1.3.0`). Drift is a range that cannot admit the copy
+in use, not a moving patch.

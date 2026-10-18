@@ -112,9 +112,11 @@ describe('readAlignmentFacts', () => {
     const facts = readAlignmentFacts()
     expect(facts.ownRange).toBe(OWN_RANGE)
     expect(facts.harnessRange).toBe(HARNESS_RANGE)
-    // The loaded patch version moves with every legitimate pi-ai upgrade; the
-    // generation is what the boundary cares about.
-    expect(piAiGeneration(facts.loadedVersion)).toBe(piAiGeneration(HARNESS_RANGE))
+    // The loaded version moves with every legitimate pi-ai upgrade — a patch
+    // within the generation *and* a later minor the harness range still
+    // admits (`^1.1.0` resolving to 1.3.0). The boundary fact is admission,
+    // not a shared major.minor.
+    expect(rangeContainsVersion(HARNESS_RANGE, facts.loadedVersion)).toBe(true)
     expect(alignmentWarning(facts)).toBeUndefined()
   })
 
