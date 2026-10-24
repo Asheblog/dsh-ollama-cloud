@@ -1,6 +1,9 @@
 # ADR 0003 — Usage UI in host slots over the plugin's own connection channel
 
-Status: accepted (2026-09-29)
+Status: accepted (2026-09-29). Decision 3 is superseded by
+[ADR 0008](0008-composition-patch-follows-the-startup-service.md) (2026-10-24),
+which moves the restated startup service to `webStartup` and pins the list with a
+test.
 
 ## Context
 
@@ -32,6 +35,9 @@ credentialed data, and how the channel gets mounted on the desktop composition.
   declares that row with `inject: [webRuntime]` only, so the registration
   throws and the channel never mounts. The patch restates the whole `inject`
   array (`[webRuntime, webServer]`) because patches replace the key wholesale.
+  *Superseded by [ADR 0008](0008-composition-patch-follows-the-startup-service.md):
+  `0.2.1-rc.1` makes that row inject `webStartup`, and the restated list is now
+  compared with the installed composition by `tests/composition.test.ts`.*
 
 ## Consequences
 
@@ -42,7 +48,8 @@ credentialed data, and how the channel gets mounted on the desktop composition.
   `inject` would lose them to this patch's stale list; the list is restated
   from the current bundle and must be re-checked when that row changes.
   Compositions without a connection row (headless) skip the patch with a
-  warning, and the browser half is simply absent there.
+  warning, and the browser half is simply absent there. The re-check is no longer
+  a human habit: `tests/composition.test.ts` fails on it (ADR 0008).
 - Because the channel mounts through the connection service, the client also
   inherits its host/origin fence and browser-session authentication; the plugin
   never exposes an unauthenticated route of its own.

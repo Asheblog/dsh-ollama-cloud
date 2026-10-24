@@ -21,8 +21,27 @@ export const HARNESS_RANGE = (
   }
 ).dependencies?.['@earendil-works/pi-ai'] as string
 
+/**
+ * The copy this checkout actually loads.
+ *
+ * Read from the installed manifest, not from a `devDependencies` pin: the pin was
+ * a second declaration of the same package, pnpm resolves the `dependencies`
+ * range instead, and the two disagreed the moment the lockfile picked up a later
+ * minor — exactly the drift this fixture exists to notice.
+ *
+ * pi-ai exports `.` only under the `import` condition, so the entry is resolved
+ * through the ESM resolver and the manifest read one level up — the same route
+ * `readAlignmentFacts` takes at runtime.
+ */
 export function installedPiAiVersion(): string {
-  return packageManifest('../package.json').devDependencies?.['@earendil-works/pi-ai'] ?? ''
+  const entry = import.meta.resolve('@earendil-works/pi-ai')
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', entry), 'utf8')) as {
+    name?: string
+    version?: string
+  }
+  // A package that moved its entry elsewhere would answer with the wrong
+  // manifest; an unknown version is better than a wrong one.
+  return manifest.name === '@earendil-works/pi-ai' && typeof manifest.version === 'string' ? manifest.version : ''
 }
 
 function packageManifest(relative: string): {

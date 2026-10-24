@@ -1,6 +1,8 @@
 # ADR 0003 — 用量 UI 放在宿主槽位、走本插件自己的连接通道
 
-状态：已采纳（2026-09-29）
+状态：已采纳（2026-09-29）。第 3 条决策已被
+[ADR 0008](0008-composition-patch-follows-the-startup-service.zh.md)（2026-10-24）取代：
+重述的启动服务改为 `webStartup`，并用测试把该列表钉住。
 
 ## 背景
 
@@ -29,6 +31,9 @@
   `webServer` 挂通道的，而 web-app bundle 只给这一行声明了 `inject: [webRuntime]`，
   于是注册抛错、通道挂不上。patch 必须整段重述 `inject`（`[webRuntime, webServer]`），
   因为 patch 是整键替换。
+  *此条已被 [ADR 0008](0008-composition-patch-follows-the-startup-service.zh.md) 取代：
+  `0.2.1-rc.1` 起该行注入 `webStartup`，且重述的列表现在由
+  `tests/composition.test.ts` 与已装 composition 对照。*
 
 ## 后果
 
@@ -37,7 +42,8 @@
 - 若未来 web-app bundle 给 connection 行的 `inject` 增加了新条目，会被本 patch 的
   陈旧列表丢掉；该列表按当时的 bundle 重述，那一行变化时必须复查。
   没有 connection 行的组合（例如 headless）会跳过该 patch 并打一条告警，
-  浏览器半侧在那里本来就不存在。
+  浏览器半侧在那里本来就不存在。复查不再依赖人的记性：
+  `tests/composition.test.ts` 会在它发生时报错（见 ADR 0008）。
 - 因为通道经由连接服务挂载，客户端同时继承它的 Host/Origin fence 与浏览器会话认证；
   本插件从不自己暴露未认证路由。
 - 运行中的宿主若尚未重新加载本插件，会对卡片的调用回以 "unknown endpoint" 诊断，

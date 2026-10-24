@@ -32,7 +32,11 @@ minimumReleaseAgeExclude:
   - '@deepseek-ai/dsh-client-connection@0.2.0-rc.2'
 
 # Skipped on purpose: pi-ai carries optional Google/protobuf provider
-# dependencies whose postinstall builds this plugin never uses.
+# dependencies whose postinstall builds this plugin never uses, and koffi (the
+# native FFI layer behind the web bundle's directory pickers and its Office
+# bridge) only needs a build if something loads it — the composition test reads
+# one YAML file out of `@deepseek-ai/dsh-web-app` and never imports that module.
 allowBuilds:
   '@google/genai': false
+  koffi: false
   protobufjs: false

@@ -25,12 +25,27 @@
           mode: normal
           maxRetries: 5
 
-# `connection.rpc.handle()` mounts its channels through the service's own
-# `webServer`, but the web-app bundle declares the connection row with
-# `inject: [webRuntime]` only — without `webServer` the registration throws
-# ("cannot get property \"webServer\" without inject") and the usage channel
-# never mounts. A patch replaces the whole `inject` array, so `webRuntime` is
-# restated. Layers apply after the bundle list, so this wins over web-app's row;
-# profiles without a connection row skip the patch with a warning.
+# `connection.rpc.handle()` mounts its channels through the *connection row's*
+# own `webServer`: the channel owner is the service's context, not the caller's,
+# so a caller that injects `webServer` itself still fails with
+# `cannot get property "webServer" without inject`. The web-app bundle declares
+# that row with `inject: [webStartup]` only, so the registration throws and the
+# usage channel never mounts. A patch replaces the whole `inject` array, so the
+# row's own dependency is restated next to `webServer`.
+#
+# The startup dependency this row carries belongs to the composition, not to
+# this plugin, and that dependency has already moved once: the 0.2.0 line's row
+# injects the web-runtime service `webRuntime`, `0.2.1-rc.1`'s row injects
+# `webStartup` (`@deepseek-ai/dsh-web-app@0.2.1-rc.1` no longer mentions
+# `webRuntime` at all). A stale name here makes this required row wait forever
+# and fails the whole boot with `1 required plugin did not activate` — the
+# failure 0.4.0–0.4.2 shipped, worked around in a profile patch. Two guards keep
+# it from happening again: `engines.dsh` admits only the releases whose row
+# injects `webStartup`, and `tests/composition.test.ts` compares this list with
+# the installed composition on every `pnpm test`, so the next upstream move
+# breaks the build instead of a boot.
+#
+# Layers apply after the bundle list, so this wins over web-app's row; profiles
+# without a connection row (headless) skip the patch with a warning.
 - id: connection
-  inject: [webRuntime, webServer]
+  inject: [webStartup, webServer]

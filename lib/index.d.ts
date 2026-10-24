@@ -48,6 +48,25 @@ export declare const name = "llm-ollama-cloud";
 export type CatalogRefreshReason = 'mount' | 'interval';
 /** The route lives on the LLM seam. */
 export declare const inject: string[];
+/**
+ * What the composition's `connection` row must inject for the usage channel to
+ * mount, in the order `cordis.patch.yml` restates it.
+ *
+ * `connection.rpc.handle()` registers the channel through the connection
+ * service's own `webServer`, so the requirement sits on *that* row: a caller
+ * that injects `webServer` itself still throws `cannot get property "webServer"
+ * without inject` (reproduced against `@deepseek-ai/cordis` 4.0.5). The first
+ * entry is that row's own startup dependency — the web-runtime service the
+ * `0.2.1` line injects as `webStartup` (`webRuntime` before it) — restated
+ * because a patch replaces the row's `inject` array wholesale.
+ *
+ * The list is written twice on purpose: here, so this diagnostic can name it,
+ * and in the bundle patch, which is what the loader actually reads.
+ * `tests/composition.test.ts` compares this constant, that patch, and the
+ * installed `@deepseek-ai/dsh-web-app` composition, so the next upstream move
+ * fails `pnpm test` instead of a user's boot.
+ */
+export declare const USAGE_CHANNEL_ROW_INJECT: readonly ["webStartup", "webServer"];
 /** Default settings namespace when the loader does not supply an entry id. */
 export declare const DEFAULT_SETTINGS_NAMESPACE = "llm-ollama-cloud";
 /**

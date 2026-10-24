@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.5.0 — 2026-10-24
+
+- **Fixes the usage channel on every `0.2.1` harness release, including
+  `0.2.1-rc.3`.** The bundle patch repaired the composition's `connection` row
+  by restating its `inject` as `[webRuntime, webServer]`. `0.2.1-rc.1` moved that
+  row's startup dependency to the `webStartup` service (the `0.2.0` line injects
+  `webRuntime`) — and `0.4.2` already listed `0.2.1-rc.1`/`rc.2` as compatible
+  while still restating the old name, its predecessors admitting the `0.2.1`
+  line through an unbounded `engines.dsh` — so on `0.2.1-rc.1`, `rc.2`, and
+  `rc.3` a required row waited for a service no composition provides and the
+  whole boot failed with `1 required plugin did not activate`. The patch now
+  restates `[webStartup, webServer]`. Deployments have been working around this
+  with a profile-level `- id: connection` patch, which is now redundant and can
+  be deleted.
+- `engines.dsh` becomes `>=0.2.1-rc.1` and the `@deepseek-ai/dsh-*` peer floors
+  move with it. The `0.2.0` line is out: it names the startup service
+  `webRuntime`, and a static patch cannot restate both spellings — the row would
+  have to inject a name that release does not provide. `dsh.compatibility`
+  records the verdict per release, so an installer reads the same answer instead
+  of discovering it at boot.
+- **The patch is now pinned by a test, not by memory.**
+  `tests/composition.test.ts` reads the installed `@deepseek-ai/dsh-web-app`
+  composition (`@deepseek-ai/dsh-web-app` is a development dependency for
+  exactly that reason) and fails when the row it patches injects something this
+  bundle does not restate, when the two lists stop matching the constant the
+  mount diagnostic names, when `webRuntime` reappears, or when
+  `dsh.compatibility.dshReleases` disagrees with `engines.dsh`. The same file
+  asserts the composition and the pi-ai adapter come from one harness release.
+  A rename upstream now breaks `pnpm test` instead of a user's boot.
+- The mount-time diagnostic for a refused channel names the whole requirement —
+  `the connection row must inject webStartup + webServer` — instead of only
+  `webServer`, so a log line after a harness upgrade says what to re-check.
+- Development dependencies move to `0.2.1-rc.3`, so typecheck and tests run
+  against the contract this build is installed into. The lockfile also resolves
+  `@earendil-works/pi-ai` `1.4.0` (a minor inside the `^1.1.0` range the
+  `0.2.1-rc.3` harness declares); `tests/generation.test.ts` pins the wire
+  contract for both context shapes through that copy, so the transcript
+  boundary is verified rather than assumed.
+- **Migration: one step, and only for a deployment that carries the workaround.**
+  Delete the profile-level `- id: connection` patch that added `webStartup` —
+  this bundle now does it — and restart. Nothing else moves: the provider id,
+  settings namespace, credential reference, model catalog, and both UI seats are
+  unchanged. Design rationale and the rejected alternatives (leaving the
+  workaround to users; injecting `webServer` on this plugin's own row; moving
+  the usage channel off the connection service):
+  [ADR 0008](docs/adr/0008-composition-patch-follows-the-startup-service.md).
+
 ## 0.4.2 — 2026-10-19
 
 - **Moves the route's pi-ai to the 1.x generation the `0.2.1` harness speaks.**

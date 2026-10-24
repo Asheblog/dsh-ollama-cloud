@@ -41,6 +41,10 @@ const required = [
   'package/docs/adr/0003-usage-ui-in-host-slots-over-the-connection-channel.md',
   'package/docs/adr/0004-pi-ai-generation-alignment.md',
   'package/docs/adr/0005-live-endpoint-catalog.md',
+  'package/docs/adr/0006-allowance-from-balance.md',
+  'package/docs/adr/0007-transient-failures-retry-and-recover.md',
+  'package/docs/adr/0008-composition-patch-follows-the-startup-service.md',
+  'package/docs/adr/0008-composition-patch-follows-the-startup-service.zh.md',
 ]
 const missing = required.filter((entry) => !listing.includes(entry))
 if (missing.length > 0) {
@@ -74,6 +78,24 @@ if (patch !== './cordis.patch.yml') {
 const patchText = readFileSync(join(scratch, 'package/cordis.patch.yml'), 'utf8')
 if (!/name:\s*['"]?dsh-ollama-cloud['"]?\s*$/m.test(patchText)) {
   console.error('check-tarball: the bundle patch does not reference this package by name')
+  process.exit(1)
+}
+// The connection row's inject list is a boot condition, not a preference: a
+// name no composition provides makes a required row wait forever. `pnpm test`
+// compares it with the installed composition (tests/composition.test.ts); this
+// check makes sure the published artifact still carries the list at all.
+if (!/^\s*inject:\s*\[\s*webStartup\s*,\s*webServer\s*\]\s*$/m.test(patchText)) {
+  console.error('check-tarball: the bundle patch does not restate inject: [webStartup, webServer]')
+  process.exit(1)
+}
+// Comments name the old service on purpose (they explain the rename), so the
+// stale-name check reads only the YAML body.
+const patchBody = patchText
+  .split('\n')
+  .filter((line) => line.trim().length > 0 && !line.trim().startsWith('#'))
+  .join('\n')
+if (/\bwebRuntime\b/u.test(patchBody)) {
+  console.error('check-tarball: the bundle patch body names webRuntime, the pre-0.2.1-rc.1 startup service')
   process.exit(1)
 }
 console.log(`check-tarball: ${packed[0]} carries ${listing.length} entries and a valid bundle manifest`)
