@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.5.1 — 2026-11-03
+
+- **Admits `0.2.1-rc.4` and `0.2.1-rc.5` to the supported harness releases, on
+  proof rather than on the version number.** The desktop app now runs
+  `0.2.1-rc.5` (`@deepseek-ai/*` inside the app bundle, and the profile's own
+  compatibility record, both say so), while this build was pinned to `rc.3` and
+  its matrix stopped there. A comparator over every harness package this plugin
+  declares — `attachment`, `client-connection`, `credentials`, `home-paths`,
+  `launch-environment`, `llm`, `llm-pi-ai`, `timeout`, `web`, `web-app` — finds
+  each of `rc.3`, `rc.4`, and `rc.5` contract identical: identical file sets,
+  byte-identical non-manifest files, and manifests that differ only in the
+  release token. No source file changes, no bundle-patch change, no pi-ai
+  generation change; the composition's `connection` row still injects
+  `webStartup` only, which is what `cordis.patch.yml` restates.
+- **The admission criterion is now executable** — `pnpm run check:contract
+  <from> <to>` (`scripts/compare-harness-contract.mjs`) packs both releases from
+  the registry and reports per package, exiting non-zero on any drift. It is not
+  part of `pnpm check`, which stays offline and deterministic. Demonstrated in
+  both directions: `rc.3 → rc.4` and `rc.3 → rc.5` pass, `0.2.0-rc.2 →
+  0.2.1-rc.5` fails on `dsh-web-app`'s `cordis.patch.yml`, its added `locale/`
+  payload, and its peer table — the move that broke `0.4.0`. Rationale, and the
+  four rejected answers (admit by range; admit only after a report; trust
+  `pnpm test` alone; keep the comparison in a scratch script):
+  [ADR 0009](docs/adr/0009-harness-release-admission.md).
+- Development dependencies move to `0.2.1-rc.5`, so typecheck and tests run
+  against the contract this build is installed into, and
+  `dsh.compatibility.dshReleases` gains `0.2.1-rc.4` and `0.2.1-rc.5`.
+  `engines.dsh` stays `>=0.2.1-rc.1`: the floor is the first release whose
+  `connection` row injects `webStartup`, and nothing since has moved it.
+- The release-age exemptions in `pnpm-workspace.yaml` are retargeted to
+  `0.2.1-rc.5`. They still named `0.2.0-rc.2` — three releases behind the pin
+  they exist to protect — so a cold install under a release-age gate would have
+  refused the version the typecheck now needs.
+- Migration: none. The provider id, settings namespace, credential reference,
+  model catalog, and both UI seats are unchanged; the supported set only widens.
+
 ## 0.5.0 — 2026-10-24
 
 - **Fixes the usage channel on every `0.2.1` harness release, including

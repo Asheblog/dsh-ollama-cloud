@@ -7,29 +7,31 @@ packages:
 confirmModulesPurge: false
 
 # The @deepseek-ai host packages are published continuously on a nightly
-# cadence; without these exemptions the release-age gate refuses to install
-# the exact versions this plugin compiles against (0.2.0-rc.2, the release
-# whose harness moved the provider context contract to pi-ai 0.87).
+# cadence; without these exemptions the release-age gate refuses to install the
+# exact versions this plugin compiles against. The token below tracks the
+# harness release the development dependencies pin — today `0.2.1-rc.5` — so a
+# bump of `devDependencies` has to bump this list with it, or a cold install
+# starts refusing the very version the typecheck is meant to run on.
 minimumReleaseAgeExclude:
-  - '@deepseek-ai/dsh-attachment@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-authorization@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-brand@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-credentials@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-fs@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-home-paths@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-invariants@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-launch-environment@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-llm@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-sandbox@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-scope@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-session@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-timeout@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-typert-protocol@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-util-crypto@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-util-values@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-web@0.2.0-rc.2'
-  - '@deepseek-ai/dsh-client-connection@0.2.0-rc.2'
+  - '@deepseek-ai/dsh-attachment@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-authorization@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-brand@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-credentials@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-fs@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-home-paths@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-invariants@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-launch-environment@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-llm-pi-ai@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-llm@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-sandbox@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-scope@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-session@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-timeout@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-typert-protocol@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-util-crypto@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-util-values@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-web@0.2.1-rc.5'
+  - '@deepseek-ai/dsh-client-connection@0.2.1-rc.5'
 
 # Skipped on purpose: pi-ai carries optional Google/protobuf provider
 # dependencies whose postinstall builds this plugin never uses, and koffi (the

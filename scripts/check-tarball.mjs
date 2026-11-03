@@ -45,6 +45,8 @@ const required = [
   'package/docs/adr/0007-transient-failures-retry-and-recover.md',
   'package/docs/adr/0008-composition-patch-follows-the-startup-service.md',
   'package/docs/adr/0008-composition-patch-follows-the-startup-service.zh.md',
+  'package/docs/adr/0009-harness-release-admission.md',
+  'package/docs/adr/0009-harness-release-admission.zh.md',
 ]
 const missing = required.filter((entry) => !listing.includes(entry))
 if (missing.length > 0) {
