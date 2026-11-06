@@ -637,6 +637,12 @@ window.__ModuleLoader__.load({
       }, [props.ctx, state.status])
 
       const windows = state.usage === undefined ? [] : state.usage.windows
+      // An endpoint that reports no allowance — and has never reported one —
+      // has nothing to meter: the row would read "Quota unavailable" on every
+      // poll while offering no control, and the Models card already says why.
+      // A row that lost the surface *after* a good read keeps its numbers, so
+      // this hides the dead row, not a stale one (issue #1).
+      if (state.status === 'unsupported' && windows.length === 0) return null
       const primary = primaryWindow(windows)
       const remaining = primary === undefined ? undefined : remainingPercent(primary.usedFraction)
       const severity = remaining === undefined ? 'none' : severityOf(remaining)

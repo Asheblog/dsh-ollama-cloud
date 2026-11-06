@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **The sidebar row is no longer rendered when the endpoint reports nothing to
+  meter.** A profile pointed at a local Ollama — or at any endpoint without an
+  allowance surface — used to get a row reading "Quota unavailable" on every
+  poll, under a bar stuck at zero, with no control that could change the
+  answer; the Models card already said *this endpoint does not report cloud
+  usage*. An `unsupported` read that arrives with no snapshot now renders
+  nothing on `sidebar.footer.action`, while an `unsupported` read that arrives
+  *after* a good one keeps the last numbers on screen.
+- A refusal still keeps the row, so a transient failure stays visible and
+  recovers on its own cadence; only the "no allowance surface" answer hides it.
+  Covered by two new client tests (hidden row; last-good snapshot retained).
+
 ## 0.5.1 — 2026-11-03
 
 - **Admits `0.2.1-rc.4` and `0.2.1-rc.5` to the supported harness releases, on

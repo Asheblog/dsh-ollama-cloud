@@ -267,17 +267,29 @@ describe('rendered seats', () => {
     expect(markup).toContain('This endpoint does not report cloud usage.')
   })
 
-  it('offers a refresh inside the sidebar panel and names its state', async () => {
+  it('hides the row when the endpoint reports no cloud usage and never did', async () => {
+    // Issue #1: a local (or otherwise allowance-less) endpoint left the row
+    // reading "Quota unavailable" on every poll with no control under it.
+    // Nothing to meter is not a failure, and the Models card states the reason.
     const { module: instance } = loadBundle()
     const rpc = rpcStub({ ok: true, value: { status: 'unsupported' } })
     await instance.internals.store.read(rpc, { force: true })
     const mount = mountClient(instance, rpc, translatorFor(instance))
-    // Render the open panel by driving its own state through a click-free path:
-    // the seat starts closed, so the panel copy is asserted through the card's
-    // shared helpers instead.
+    expect(renderToStaticMarkup(sidebarSeat(mount)({ wide: true }))).toBe('')
+    expect(renderToStaticMarkup(sidebarSeat(mount)({ wide: false }))).toBe('')
+  })
+
+  it('keeps the row on a last-good snapshot after the endpoint stops reporting', async () => {
+    // The rule above is about an endpoint with nothing to show — not about
+    // deleting numbers the account already received.
+    const { module: instance } = loadBundle()
+    const rpc = rpcStub({ ok: true, value: READY })
+    await instance.internals.store.read(rpc, { force: true })
+    const mount = mountClient(instance, rpc, translatorFor(instance))
+    await instance.internals.store.read(rpcStub({ ok: true, value: { status: 'unsupported' } }), { force: true })
     const markup = renderToStaticMarkup(sidebarSeat(mount)({ wide: true }))
     expect(markup).toContain('Ollama Cloud quota')
-    expect(markup).toContain('Quota unavailable')
+    expect(markup).toContain('10.9% left')
   })
 
   it('renders the sidebar row with the remaining share and no panel until opened', async () => {
@@ -323,9 +335,16 @@ describe('rendered seats', () => {
     expect(markup).not.toContain('Resets at')
   })
 
-  it('shows a neutral, empty bar while no window has been read yet', () => {
+  it('shows a neutral, empty bar while no window has been read yet', async () => {
+    // A refusal is not "nothing to report": the row stays, because the next
+    // poll can land. Only an endpoint with no allowance surface goes away.
     const { module: instance } = loadBundle()
-    const mount = mountClient(instance, rpcStub({ ok: true, value: { status: 'unsupported' } }), translatorFor(instance))
+    const rpc = rpcStub({
+      ok: false,
+      error: { code: 'transport', message: 'could not reach https://x', details: {} },
+    })
+    await instance.internals.store.read(rpc, { force: true })
+    const mount = mountClient(instance, rpc, translatorFor(instance))
     const markup = renderToStaticMarkup(sidebarSeat(mount)({ wide: true }))
     expect(markup).toContain('data-severity="none"')
     expect(markup).toContain('data-loading="true"')
