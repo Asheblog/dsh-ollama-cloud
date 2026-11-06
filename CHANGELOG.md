@@ -1,7 +1,36 @@
 # Changelog
 
-## Unreleased
+## 0.5.2 — 2026-11-06
 
+- **Admits harness `0.2.2-rc.1`, after following the drift that release actually
+  carries.** `pnpm run check:contract 0.2.1-rc.5 0.2.2-rc.1` answers *not
+  contract identical* — ten packages with findings — so this was not a
+  version-support bump (ADR 0009). What moved, and what followed:
+  - **pi-ai generation.** `@deepseek-ai/dsh-llm-pi-ai` moves its own dependency
+    from `@earendil-works/pi-ai ^1.1.0` to `^1.3.0`, and this route streams
+    through its own pi-ai copy, so
+    `dependencies["@earendil-works/pi-ai"]` moves to `^1.3.0` with it (resolved
+    `1.4.0`). `pnpm run check:pi-ai` now reads `^1.3.0 overlaps
+    @deepseek-ai/dsh-llm-pi-ai@0.2.2-rc.1 (installed dev dependency) (^1.3.0)`.
+  - **Two required fields on the resolved profile.**
+    `ResolvedPiAiProviderProfile` gained `maxRequestImages` and
+    `imageOffloadCountQuantum`, required there because the adapter reads both on
+    every request (a request over the count bound fails with
+    `IMAGE_OFFLOAD_REQUIRED`). `profile.ts` supplies the host's own defaults —
+    50 retained occurrences, 10 offloaded per count overflow — as named
+    constants, so a route that never configures the bound behaves exactly like
+    one the host resolved. `tsc` named exactly these two and nothing else.
+  - **cordis `4.1.0`, loader `1.1.0`, schemastery `3.19.0`.** Development
+    dependencies follow, and the schemastery peer range widens from `~3.18.5` to
+    `~3.19.0`; typecheck and the plugin lifecycle tests run green against them.
+  - **The composition is unchanged where this plugin patches it.**
+    `@deepseek-ai/dsh-web-app@0.2.2-rc.1` ships a new `cordis.patch.yml`, but its
+    `connection` row still injects `[webStartup]` only, so the bundle patch and
+    the `engines.dsh` floor stay as they were — and
+    `tests/composition.test.ts` re-proves it against the *installed* composition
+    instead of trusting the version number.
+  - Additive only: six new locale files per package (`de`/`es`/`fr`/`ja`/`pt`/
+    `ru`). No message, tool, or channel contract this plugin speaks changed.
 - **The sidebar row is no longer rendered when the endpoint reports nothing to
   meter.** A profile pointed at a local Ollama — or at any endpoint without an
   allowance surface — used to get a row reading "Quota unavailable" on every
@@ -13,6 +42,12 @@
 - A refusal still keeps the row, so a transient failure stays visible and
   recovers on its own cadence; only the "no allowance surface" answer hides it.
   Covered by two new client tests (hidden row; last-good snapshot retained).
+- Verification for this release: `typecheck`, `test` (221 passed), `build`,
+  `check:pi-ai`, `check:live` against the real account (`check-live-allowance:
+  ok — 2 window(s)`, session 96.1% left, weekly 47.7% left), and `pack:check`.
+- Migration: none. The provider id, settings namespace, credential reference,
+  model catalog, both UI seats, and the `usage/read` wire shape are unchanged;
+  the supported set only widens.
 
 ## 0.5.1 — 2026-11-03
 

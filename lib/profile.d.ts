@@ -27,6 +27,25 @@ export declare const DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET = 4194304;
 /** Raw encoded-byte target before inline base64 expansion (1 MiB). */
 export declare const DEFAULT_REQUEST_IMAGE_MAX_BYTES = 1048576;
 /**
+ * Request-level retained-image count bound (matches the host default).
+ *
+ * `0.2.2-rc.1` resolves this on the adapter's side and made it required on the
+ * resolved profile: a request carrying more image occurrences than this fails
+ * with `IMAGE_OFFLOAD_REQUIRED` naming how many of the oldest to offload. 50 is
+ * the host's own default, so a route that never thinks about the bound behaves
+ * exactly like one the host resolved.
+ */
+export declare const DEFAULT_MAX_REQUEST_IMAGES = 50;
+/**
+ * Oldest occurrences offloaded per count overflow (matches the host default,
+ * `min(10, maxRequestImages)`).
+ *
+ * Kept explicit rather than left to a reader's arithmetic: the adapter rejects
+ * a step above {@link DEFAULT_MAX_REQUEST_IMAGES}, and a larger step rewrites
+ * the request prefix less often at the cost of dropping more history at once.
+ */
+export declare const DEFAULT_IMAGE_OFFLOAD_COUNT_QUANTUM = 10;
+/**
  * Build one pi-ai model descriptor for the OpenAI Chat Completions surface.
  * @param model - resolved catalog model.
  * @param connection - connection facts the descriptor defaults from.
