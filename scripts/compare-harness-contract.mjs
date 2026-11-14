@@ -16,7 +16,8 @@
  *
  *   1. the set of shipped files is identical,
  *   2. every file other than `package.json` is byte-identical,
- *   3. `package.json` is deep-equal once the `0.2.1-rc.N` token is normalized.
+ *   3. `package.json` is deep-equal once the release token (`-rc.N` on the
+ *      `from` train) is normalized.
  *
  * A different version of a *transitive* dependency counts as drift here — it is
  * exactly how a contract change hides from a reader who only diffs the surface
@@ -44,7 +45,6 @@ import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const own = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-const TOKEN = /0\.2\.1-rc\.\d+/gu
 
 const keep = process.argv.includes('--keep')
 const [from, to] = process.argv.slice(2).filter((arg) => arg !== '--keep')
@@ -53,6 +53,26 @@ if (!from || !to) {
   console.error('usage: compare-harness-contract.mjs <from-version> <to-version> [--keep]')
   process.exit(2)
 }
+
+/**
+ * The release token of the train `from` belongs to, e.g. `0\.2\.2-rc\.N` for
+ * `0.2.2-rc.1`.
+ *
+ * The comparison normalizes the release token and only the release token (ADR
+ * 0009), so which token that is has to come from the argument the caller named.
+ * It used to be the literal `0.2.1-rc.N`: correct while this plugin sat on that
+ * train, and silently wrong the moment the train moved — every manifest then
+ * differed on `version` alone and the release read as drift. Deriving it from
+ * `from` also keeps a cross-train comparison conservative: a `to` on another
+ * train keeps its own token, so it still reports as a finding.
+ */
+function releaseToken(version) {
+  const train = version.replace(/\.\d+$/u, '')
+  const escaped = train.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  return new RegExp(`${escaped}\\.\\d+`, 'gu')
+}
+
+const TOKEN = releaseToken(from)
 
 /** Every `@deepseek-ai/dsh-*` package this plugin declares, from either list. */
 const candidates = [...new Set([
@@ -97,7 +117,7 @@ function files(dir, base = dir, out = []) {
 
 /** Recursively normalize the release token out of string values, sorting keys. */
 function normalize(value) {
-  if (typeof value === 'string') return value.replace(TOKEN, '0.2.1-rc.X')
+  if (typeof value === 'string') return value.replace(TOKEN, '0.0.0-rc.X')
   if (Array.isArray(value)) return value.map(normalize)
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(Object.keys(value).sort().map((key) => [key, normalize(value[key])]))

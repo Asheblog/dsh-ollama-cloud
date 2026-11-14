@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.5.3 — 2026-11-14
+
+- **Admits harness `0.2.2-rc.3`, after following the drift that release actually
+  carries.** `pnpm run check:contract 0.2.2-rc.1 0.2.2-rc.3` answers *not
+  contract identical* — ten packages with findings — so this was not a
+  version-support bump (ADR 0009). What moved, and why nothing had to follow:
+  - **The comparator derives its release token from the release it is given.**
+    It normalized the literal `0.2.1-rc.N`, which was right while this plugin sat
+    on that train and wrong the moment the train moved: every manifest would then
+    differ on `version` alone, and an unchanged release would read as drift.
+    `releaseToken(from)` now builds `0.2.2-rc.N` from the argument, so a
+    cross-train comparison still reports the token — an untested train is not a
+    version-support bump — while a within-train comparison normalizes it.
+  - **Publishing configuration, not contract.** `rc.3` ships `src/`, source
+    maps, and the translated READMEs inside every package, so the file-set and
+    byte-identity legs fire on all ten packages. No `exports` entry this plugin
+    imports was removed, and `package.json` moved only on `files`, maps, and the
+    release token.
+  - **`dsh-web-app` re-cut its composition.** `account-controller` becomes
+    `ui-account-notifications`; `office-to-pdf` becomes `office-kit` plus
+    `workspace-dependencies` and `skill-office`; `mcp-manager` and
+    `ui-agent-team` join. The `connection` row still injects `[webStartup]`
+    alone, so the bundle patch is unchanged — re-proved by
+    `tests/composition.test.ts` against the *installed* composition.
+  - **`dsh-llm` moves its error base and narrows `LlmError`.** `HarnessError`
+    now lives in `@deepseek-ai/dsh-error` and is re-exported; `LlmError`'s
+    constructor takes only a built-in failure code, with `LlmError.fromFailure`
+    for a provider's own string. This route already throws
+    `MISSING_CREDENTIAL`, a built-in code, so the narrowing costs it nothing.
+  - **`dsh-llm-pi-ai` records a request-prefix digest.** `replay.ts` and
+    `stream.ts` gained optional `prefixDigest` parameters beside a new
+    `prefix-binding` module. `ResolvedPiAiProviderProfile` did not change, and
+    the adapter supplies the digest itself.
+  - **`dsh-web` exposes providers over Remote.** `WebRuntime` extends
+    `TypertRemoteService` and gains `listProviders()` plus
+    `web/providers-changed`. Registration and the provider shapes this route
+    implements are unchanged.
+  - **`dsh-attachment` and `dsh-credentials` are surface-only here.**
+    `AttachmentError` extends the shared base and gains `isAttachmentError`; a
+    credential description may now carry a masked preview. Neither sits on this
+    route's path.
+  - Development dependencies move to `0.2.2-rc.3`, so typecheck and tests run
+    against the contract the build installs into;
+    `dsh.compatibility.dshReleases` gains `0.2.2-rc.3`; the release-age
+    exemptions in `pnpm-workspace.yaml` move with the pin. `engines.dsh` stays
+    `>=0.2.1-rc.1` — the floor is the first release whose `connection` row
+    injects `webStartup`, and that has not moved.
+  - `0.2.2-rc.2` is published but not admitted: it was never reviewed against
+    this build, and a verdict without that review is the failure ADR 0009 exists
+    to prevent.
+- Verification for this release: `typecheck`, `test` (221 passed), `build`,
+  `check:pi-ai` (`^1.3.0 overlaps @deepseek-ai/dsh-llm-pi-ai@0.2.2-rc.3
+  (installed dev dependency) (^1.3.0)`), and `pack:check`.
+- Migration: none. The provider id, settings namespace, credential reference,
+  model catalog, both UI seats, and the `usage/read` wire shape are unchanged;
+  the supported set only widens.
+
 ## 0.5.2 — 2026-11-06
 
 - **Admits harness `0.2.2-rc.1`, after following the drift that release actually
