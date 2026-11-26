@@ -18,10 +18,9 @@
  */
 
 import { credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
-import { assertUsableApiKey } from '@deepseek-ai/dsh-llm'
 
 import { PLUGIN_NAME, type ConnectionOptions } from './config.js'
-import type { ResolveCredential } from './credentials.js'
+import { assertUsableApiKey, type ResolveCredential } from './credentials.js'
 import { nativeBaseFrom } from './discovery.js'
 import {
   readUsage,

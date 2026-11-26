@@ -13,8 +13,20 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
-import { assertUsableApiKey } from '@deepseek-ai/dsh-llm'
+import { INVALID_CREDENTIAL_CODE, LlmError } from '@deepseek-ai/dsh-llm'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
+
+/** Validate a supplied key without disclosing it in an error. Older hosts do not
+ * export the validator from dsh-credentials; keep the same transport rule here. */
+export function assertUsableApiKey(raw: string, packageName: string, reference: string): string {
+  const value = raw.trim()
+  if (/^[\x21-\x7E]+$/u.test(value)) return value
+  const reason = value.length === 0 ? 'is blank' : 'contains characters no HTTP header can carry'
+  throw new LlmError(
+    `${packageName}: the API key resolved from ${reference} ${reason}; set ${reference} to the raw key in the Models page or launch environment`,
+    INVALID_CREDENTIAL_CODE,
+  )
+}
 
 /** A reference resolved to a usable key, or `undefined` when nothing is set. */
 export type ResolveCredential = (reference: CredentialRef) => Promise<string | undefined>

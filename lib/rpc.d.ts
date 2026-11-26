@@ -18,7 +18,7 @@
  */
 import { type CredentialProvider } from '@deepseek-ai/dsh-credentials';
 import { type ConnectionOptions } from './config.js';
-import type { ResolveCredential } from './credentials.js';
+import { type ResolveCredential } from './credentials.js';
 import { type OllamaUsageSnapshot } from './usage.js';
 /** Channel the browser half registers and calls under. */
 export declare const USAGE_RPC_CHANNEL = "/ollama-cloud";

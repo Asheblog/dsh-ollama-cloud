@@ -12,6 +12,9 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials';
+/** Validate a supplied key without disclosing it in an error. Older hosts do not
+ * export the validator from dsh-credentials; keep the same transport rule here. */
+export declare function assertUsableApiKey(raw: string, packageName: string, reference: string): string;
 /** A reference resolved to a usable key, or `undefined` when nothing is set. */
 export type ResolveCredential = (reference: CredentialRef) => Promise<string | undefined>;
 /**

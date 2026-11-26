@@ -24,7 +24,7 @@ import type { ConnectionOptions, ResolvedModel } from './config.js';
 export declare const DEFAULT_MAX_REQUEST_IMAGE_BYTES = 20971520;
 /** Total-pixel budget preserving the complete 2048px normalized attachment. */
 export declare const DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET = 4194304;
-/** Raw encoded-byte target before inline base64 expansion (1 MiB). */
+/** Raw bytes per image before inline base64 expansion (1 MiB). */
 export declare const DEFAULT_REQUEST_IMAGE_MAX_BYTES = 1048576;
 /**
  * Request-level retained-image count bound (matches the host default).

@@ -82,7 +82,13 @@ describe('createPiAiProfile', () => {
     expect(profile.streamIdleTimeoutMs).toBe(300000)
     expect(profile.maxRequestImageBytes).toBe(20971520)
     expect(profile.requestImagePixelBudget).toBe(4194304)
-    expect(profile.requestImageMaxBytes).toBe(1048576)
+    expect(profile).toMatchObject({
+      maxImageBytes: 1048576,
+      requestImageMaxBytes: 1048576,
+    })
+    // DSH 0.2.3 also caps each image at its fixed share of the request budget.
+    expect(Math.floor(profile.maxRequestImageBytes / profile.requestImageBudgetCount / 4) * 3)
+      .toBeGreaterThanOrEqual(1048576)
     expect(profile.modelErrors.size).toBe(0)
     expect(profile.configuredMaxTokens.size).toBe(0)
     expect(profile.piProvider?.id).toBe('ollama-cloud')

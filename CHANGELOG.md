@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.4 — 2026-11-26
+
+- Restores startup on DSH `0.2.3-alpha.2`: the plugin validates API keys without importing the removed LLM helper. Credential references, stored values and error codes are unchanged.
+- Supplies the new Pi adapter's resolved image budget while retaining the old adapter's field. The route keeps its 20 MiB aggregate base64 budget, 50-image count limit and 1 MiB per-image budget. On newer DSH the per-image limit is enforced after encoding and may resize oversized images further.
+- Existing Ollama settings carry over; install the new bundle over the old one.
+
 ## 0.5.3 — 2026-11-14
 
 - **Admits harness `0.2.2-rc.3`, after following the drift that release actually
